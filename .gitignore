@@ -1,0 +1,7 @@
+/.cache
+/dist
+/src/*.cpp
+*.obj
+*.o
+*.exe
+*.a
