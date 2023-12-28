@@ -31,14 +31,6 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 	return opt*;
 }
 
-expect: <T>(move v: std::variant, message) -> T = {
-	if !std::holds_alternative<T>(v) {
-		panic("ERROR: {}", message);
-	}
-
-	return std::get<T>(v);
-}
-
 main: (args) -> int = {
 	cpp2b_config_file := find_closest_file("cpp2b.toml").expect("Cannot find cpp2b config file. Are you sure you're running cpp2b in a cpp2b project?");
 
