@@ -31,20 +31,173 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 	return opt*;
 }
 
+GitHubRepo: type = {
+	private _repo: fs::path;
+
+	operator=: (out this, repo) = {
+		_repo = repo;
+
+		if !fs::exists(path() / ".git") {
+			ensure_dir(path());
+			_git("clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/(_repo.generic_string())$ .");
+		}
+	}
+
+	private _git: (this, args: std::string) = {
+		cmd_str: std::string = "git -C (path().string())$ " + args;
+		std::println("SUBCOMMAND: {}", cmd_str);
+		std::system(cmd_str.c_str());
+	}
+
+	path: (this) -> fs::path = {
+		return fs::current_path() / ".cache" / "cpp2" / "repos" / _repo;
+	}
+
+	add: (this, subpath: std::string) = {
+		if !fs::exists(path() / subpath) {
+			_git("sparse-checkout add (subpath)$ --quiet");
+		}
+	}
+}
+
+USAGE: std::string_view = R"(
+cpp2b - CLI for CPP2
+
+Usage:
+	cpp2b build
+	cpp2b clean
+	cpp2b run
+)";
+
 main: (args) -> int = {
+	using std::views::drop;
+
 	cpp2b_config_file := find_closest_file("cpp2b.toml").expect("Cannot find cpp2b config file. Are you sure you're running cpp2b in a cpp2b project?");
 
-	std::println("Found cpp2b config file: {}", cpp2b_config_file.string());
+	std::println("INFO: found cpp2b config file: {}", cpp2b_config_file.string());
 
 	fs::current_path(cpp2b_config_file.parent_path());
 
-	ensure_dir(".cache/modules");
-	ensure_dir(".cache/repos");
-	ensure_dir(".cache/tools");
+	ensure_dir(".cache/cpp2/modules");
+	ensure_dir(".cache/cpp2/repos");
+	ensure_dir(".cache/cpp2/tools");
 
-	for args do (arg) {
-		std::println("arg={}", arg);
+	(repo := GitHubRepo("hsutter/cppfront")) { 
+		repo.add("source");
+		repo.add("include");
+		(exit_code := ensure_cppfront(repo.path())) if exit_code != 0 {
+			return exit_code;
+		}
 	}
 
-	return 0;
+	i:=1U; while args.size() > i next i++ {
+		arg := args[i];
+
+		if !arg.starts_with("-") {
+			remaining_args := args | drop(i + 1);
+			return inspect arg -> int {
+				is "build" = subcommands::build(remaining_args);
+				is "clean" = subcommands::clean(remaining_args);
+				is "run"   = subcommands::run(remaining_args);
+				is _       = subcommands::unknown(arg);
+			};
+		}
+
+		if arg == "--help" || arg == "-h" {
+			std::print("{}", USAGE);
+			return 0;
+		}
+
+		std::println("ERROR: unknown flag '{}'", arg);
+		return 1;
+	}
+
+	std::println("ERROR: requires subcommand");
+	std::print("{}", USAGE);
+
+	return 1;
+}
+
+transpile_cpp2: (src: fs::path, out_dir: fs::path) = {
+	cppfront := fs::absolute(".cache/cpp2/tools/cppfront");
+	out_cpp1_src: fs::path = out_dir / fs::path(src).replace_extension(".cpp");
+	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (out_cpp1_src.string())$ -pure -import-std -add-source-info -format-colon-errors";
+	ensure_dir(out_cpp1_src.parent_path());
+	std::println("INFO: transpiling {} -> {}", src.string(), out_cpp1_src.string());
+	std::system(cmd_str.c_str());
+}
+
+getenv_sv: (env_var: *const char) -> std::optional<std::string_view> = {
+	val := std::getenv(env_var);
+	if val == nullptr {
+		return std::nullopt;
+	}
+	return std::string_view(val, std::strlen(val));
+}
+
+unix_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path) -> int = {
+	CC: std::string_view = getenv_sv("CC").value_or("clang");
+	cwd := fs::current_path();
+	cmd_str: std::string = "(CC)$ -lstdc++ -lc -lm -std=c++20 cppfront.cpp -o (out_cppfront_binary.string())$";
+	fs::current_path(cppfront_source / "source");
+	exit_code := std::system(cmd_str.c_str());
+	fs::current_path(cwd);
+	return exit_code;
+}
+
+ensure_cppfront: (cppfront_source: fs::path) -> int = {
+	exit_code: int = 0;
+	cppfront: fs::path = ".cache/cpp2/tools/cppfront";
+	if !fs::exists(cppfront) {
+		std::println("INFO: compiling cppfront...");
+		exit_code = unix_compile_cppfront(fs::absolute(cppfront_source), fs::absolute(cppfront));
+	}
+	return exit_code;
+}
+
+unix_compile_binary: (srcs: std::vector<fs::path>) = {
+	
+}
+
+subcommands: type = {
+	clean: (args) -> int = {
+		if !args.empty() {
+			std::println("ERROR: clean does not support arguments");
+			return 1;
+		}
+
+		fs::remove_all(".cache/cpp2");
+
+		return 0;
+	}
+	
+	build: (args) -> int = {
+		if !args.empty() {
+			std::println("ERROR: build does not support arguments");
+			return 1;
+		}
+
+		transpile_source_dir: fs::path = ".cache/cpp2/source";
+
+		for fs::recursive_directory_iterator("src") do(p: fs::path) {
+			if p.extension() == ".cpp2" {
+				transpile_cpp2(p, transpile_source_dir);
+			}
+		} 
+
+		return 0;
+	}
+
+	run: (args) -> int = {
+		std::println("TODO: run cpp2 project");
+		for args do (arg) {
+			std::println("arg is {}", arg);
+		}
+		return 0;
+	}
+
+	unknown: (subcommand) -> int = {
+		std::println("ERROR: unknown subcommand {}", subcommand);
+		return 1;
+	}
 }
