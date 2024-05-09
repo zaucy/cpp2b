@@ -1,3 +1,6 @@
+import std.compat;
+import cpp2b;
+
 fs: namespace == std::filesystem;
 
 ensure_dir: (dir: fs::path) = {
@@ -8,6 +11,10 @@ ensure_dir: (dir: fs::path) = {
 	}
 }
 
+modules_dir: () modules_dir(fs::current_path());
+modules_dir: (base: fs::path) -> fs::path = {
+	return base / ".cache" / "cpp2" / "modules";
+}
 
 find_closest_file: (filename) find_closest_file(filename, fs::current_path());
 find_closest_file: (filename, base: fs::path) -> std::optional<fs::path> = {
@@ -32,30 +39,30 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 }
 
 GitHubRepo: type = {
-	private _repo: fs::path;
+	private repo_: fs::path;
 
 	operator=: (out this, repo) = {
-		_repo = repo;
+		repo_ = repo;
 
 		if !fs::exists(path() / ".git") {
 			ensure_dir(path());
-			_git("clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/(_repo.generic_string())$ .");
+			git_("clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
 		}
 	}
 
-	private _git: (this, args: std::string) = {
+	private git_: (this, args: std::string) = {
 		cmd_str: std::string = "git -C (path().string())$ " + args;
 		std::println("SUBCOMMAND: {}", cmd_str);
 		std::system(cmd_str.c_str());
 	}
 
 	path: (this) -> fs::path = {
-		return fs::current_path() / ".cache" / "cpp2" / "repos" / _repo;
+		return fs::current_path() / ".cache" / "cpp2" / "repos" / repo_;
 	}
 
 	add: (this, subpath: std::string) = {
 		if !fs::exists(path() / subpath) {
-			_git("sparse-checkout add (subpath)$ --quiet");
+			git_("sparse-checkout add (subpath)$ --quiet");
 		}
 	}
 }
@@ -69,32 +76,156 @@ Usage:
 	cpp2b run
 )";
 
+module_source_extension: (compiler: cpp2b::compiler_type) -> std::string_view = {
+	if compiler == cpp2b::compiler_type::msvc  { return ".ixx"; }
+	if compiler == cpp2b::compiler_type::clang { return ".cppm"; }
+	if compiler == cpp2b::compiler_type::gcc   { return ".cxx"; }
+	std::abort();
+}
+
+generate_cpp2b_module: () = {
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.tpl.cppm";
+	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
+
+	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
+	cpp2b_module_template_stream: std::ifstream = (cpp2b_module_template_path);
+
+	vars: std::unordered_map<std::string, std::string> = (
+		std::pair("@CPP2B_PROJECT_ROOT@", fs::current_path().string())
+	);
+	
+	line: std::string = "";
+	assert(cpp2b_module_template_stream);
+	while std::getline(cpp2b_module_template_stream, line) {
+		for vars do (entry) {
+			var_name := entry.first;
+			var_value := entry.second;
+			pos := line.find(var_name);
+
+			if pos != std::string::npos {
+				line.replace(pos, var_name.size(), var_value);
+			}
+		}
+		cpp2b_module_source_stream << line << "\n";
+	}
+
+	cpp2b_module_template_stream.close();
+	cpp2b_module_source_stream.close();
+
+	build_cpp1_module("cpp2b", :std::vector=(cpp2b_module_source_path), :std::vector=("std", "std.compat"));
+}
+
+get_vs_tools_dir: () -> fs::path = {
+	return getenv_sv("VCToolsInstallDir").expect("missing 'VCToolsInstallDir' environment variable");
+}
+
+ensure_std_modules: () = {
+	d := modules_dir();
+	std_bmi: fs::path = d / "std.ifc";
+	std_compat_bmi: fs::path = d / "std.compat.ifc";
+	vs_tools_dir := get_vs_tools_dir();
+
+	if !fs::exists(std_bmi) {
+		build_cpp1_module("std", :std::vector=(vs_tools_dir / "modules" / "std.ixx"), :std::vector<std::string> = ());
+	}
+
+	if !fs::exists(std_compat_bmi) {
+		build_cpp1_module("std.compat", :std::vector=(vs_tools_dir / "modules" / "std.compat.ixx"), :std::vector=("std"));
+	}
+}
+
+build_cpp1_module: (name: std::string, sources, module_deps) = {
+	std::println("INFO: compiling module {}...", name);
+	d := fs::absolute(modules_dir());
+	bmi := d / ("(name)$.ifc");
+	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc /c";
+
+	fs::remove(bmi);
+
+	for module_deps do (dep: std::string) {
+		dep_bmi := d / ("(dep)$.ifc");
+		cmd_str += " /reference \"(dep_bmi.string())$\"";
+	}
+
+	for sources do (src: fs::path) {
+		cmd_str += " \"(fs::absolute(src).string())$\"";
+	}
+
+	cmd_str += " /ifcOutput \"(bmi.string())$\"";
+
+	cwd := fs::current_path();
+	fs::current_path(d);
+	exit_code := std::system(cmd_str.c_str());
+	fs::current_path(cwd);
+
+	if exit_code != 0 {
+		std::println("ERROR: failed to compile module {}", name);
+		std::abort();
+	}
+}
+
+has_env: (var_name: *const char) -> bool = {
+	return std::getenv(var_name) != nullptr;
+}
+
+has_msvc_env_vars: () -> bool = {
+	return has_env("INCLUDE") && has_env("LIB") && has_env("VCToolsVersion");
+}
+
+home_dir: () -> fs::path = {
+	if constexpr cpp2b::target_platform() == cpp2b::platform::windows {
+		return getenv_sv("USERPROFILE").expect("USERPROFILE does not exist");
+	} else {
+		return getenv_sv("HOME").expect("HOME does not exist");
+	}
+}
+
+share_dir: () -> fs::path = {
+	return fs::path(cpp2b::install_dir()) / "share";
+}
+
+run_with_msvc_env_vars: (args) -> int = {
+	using std::views::drop;
+
+	p: fs::path = fs::absolute(share_dir() / "run_with_msvc_env.cmd");
+
+	cmd_str: std::string = p.string() + " " + std::string(args[0]);
+	for args | drop(1) do (arg) {
+		cmd_str += " (arg)$";
+	}
+
+	return std::system(cmd_str.c_str());
+}
+
 main: (args) -> int = {
 	using std::views::drop;
 
-	cpp2b_config_file := find_closest_file("cpp2b.toml").expect("Cannot find cpp2b config file. Are you sure you're running cpp2b in a cpp2b project?");
+	argz: std::vector<std::string_view> = (args.begin(), args.end());
 
-	std::println("INFO: found cpp2b config file: {}", cpp2b_config_file.string());
+	if constexpr cpp2b::compiler() == cpp2b::compiler_type::msvc {
+		if !has_msvc_env_vars() {
+			(exit_code := run_with_msvc_env_vars(argz)) {
+				return exit_code;
+			}
+		} else {
+			std::println("INFO: using vs tools {}", getenv_sv("VCToolsVersion").expect("msvc env internal error"));
+		}
+	}
+
+	cpp2b_config_file := find_closest_file("cpp2b.toml").expect("Cannot find cpp2b config file. Are you sure you're running cpp2b in a cpp2b project?");
 
 	fs::current_path(cpp2b_config_file.parent_path());
 
 	ensure_dir(".cache/cpp2/modules");
 	ensure_dir(".cache/cpp2/repos");
 	ensure_dir(".cache/cpp2/tools");
+	ensure_dir(".cache/cpp2/source/_build");
 
-	(repo := GitHubRepo("hsutter/cppfront")) { 
-		repo.add("source");
-		repo.add("include");
-		(exit_code := ensure_cppfront(repo.path())) if exit_code != 0 {
-			return exit_code;
-		}
-	}
-
-	i:=1U; while args.size() > i next i++ {
-		arg := args[i];
+	i:=1U; while argz.size() > i next i++ {
+		arg := argz[i];
 
 		if !arg.starts_with("-") {
-			remaining_args := args | drop(i + 1);
+			remaining_args := argz | drop(i + 1);
 			return inspect arg -> int {
 				is "build" = subcommands::build(remaining_args);
 				is "clean" = subcommands::clean(remaining_args);
@@ -118,12 +249,20 @@ main: (args) -> int = {
 	return 1;
 }
 
+executable_extension: () -> std::string_view =  {
+	if constexpr cpp2b::target_platform() == cpp2b::platform::windows {
+		return ".exe";
+	} else {
+		return "";
+	}
+}
+
 transpile_cpp2: (src: fs::path, out_dir: fs::path) = {
-	cppfront := fs::absolute(".cache/cpp2/tools/cppfront");
+	cppfront := fs::absolute(".cache/cpp2/tools/cppfront(executable_extension())$");
 	out_cpp1_src: fs::path = out_dir / fs::path(src).replace_extension(".cpp");
 	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (out_cpp1_src.string())$ -pure -import-std -add-source-info -format-colon-errors";
 	ensure_dir(out_cpp1_src.parent_path());
-	std::println("INFO: transpiling {} -> {}", src.string(), out_cpp1_src.string());
+	std::println("INFO: transpiling {} -> {}", src.generic_string(), out_cpp1_src.generic_string());
 	std::system(cmd_str.c_str());
 }
 
@@ -135,28 +274,55 @@ getenv_sv: (env_var: *const char) -> std::optional<std::string_view> = {
 	return std::string_view(val, std::strlen(val));
 }
 
-unix_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path) -> int = {
-	CC: std::string_view = getenv_sv("CC").value_or("clang");
+unix_compile_cppfront: (cc: std::string_view, cppfront_source: fs::path, out_cppfront_binary: fs::path) -> int = {
 	cwd := fs::current_path();
-	cmd_str: std::string = "(CC)$ -lstdc++ -lc -lm -std=c++20 cppfront.cpp -o (out_cppfront_binary.string())$";
+	cmd_str: std::string = "(cc)$ -lstdc++ -lc -lm -std=c++20 cppfront.cpp -o (out_cppfront_binary.string())$";
 	fs::current_path(cppfront_source / "source");
 	exit_code := std::system(cmd_str.c_str());
 	fs::current_path(cwd);
 	return exit_code;
 }
 
-ensure_cppfront: (cppfront_source: fs::path) -> int = {
-	exit_code: int = 0;
-	cppfront: fs::path = ".cache/cpp2/tools/cppfront";
-	if !fs::exists(cppfront) {
-		std::println("INFO: compiling cppfront...");
-		exit_code = unix_compile_cppfront(fs::absolute(cppfront_source), fs::absolute(cppfront));
+cl_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path) -> int = {
+	cwd := fs::current_path();
+	cmd_str: std::string = "cl.exe /nologo /std:c++latest /EHsc cppfront.cpp";
+	fs::current_path(cppfront_source / "source");
+	exit_code := std::system(cmd_str.c_str());
+	if exit_code == 0 {
+		fs::copy_file("cppfront.exe", out_cppfront_binary, fs::copy_options::overwrite_existing);
 	}
+	fs::current_path(cwd);
 	return exit_code;
 }
 
-unix_compile_binary: (srcs: std::vector<fs::path>) = {
-	
+ensure_cppfront: (cppfront_source: fs::path) -> int = {
+	cppfront: fs::path = ".cache/cpp2/tools/cppfront(executable_extension())$";
+	if !fs::exists(cppfront) {
+		std::println("INFO: compiling cppfront...");
+
+		if cpp2b::compiler() == cpp2b::compiler_type::clang {
+			return unix_compile_cppfront("clang", fs::absolute(cppfront_source), fs::absolute(cppfront));
+		}
+
+		if cpp2b::compiler() == cpp2b::compiler_type::gcc {
+			return unix_compile_cppfront("gcc", fs::absolute(cppfront_source), fs::absolute(cppfront));
+		}
+
+		if cpp2b::compiler() == cpp2b::compiler_type::msvc {
+			return cl_compile_cppfront(fs::absolute(cppfront_source), fs::absolute(cppfront));
+		}
+
+		std::println("ERROR: unknown compiler");
+		std::abort();
+	}
+
+	return 0;
+}
+
+warn_if_error: (context, p: fs::path, ec: std::error_code) -> void = {
+	if ec {
+		std::println("WARN: ({}) {} - {}", context, p.generic_string(), ec.message());
+	}
 }
 
 subcommands: type = {
@@ -166,7 +332,10 @@ subcommands: type = {
 			return 1;
 		}
 
-		fs::remove_all(".cache/cpp2");
+		cache_dir: fs::path = ".cache/cpp2";
+
+		fs::remove_all(cache_dir);
+		std::println("INFO: {} removed", fs::absolute(cache_dir).string());
 
 		return 0;
 	}
@@ -177,13 +346,50 @@ subcommands: type = {
 			return 1;
 		}
 
+		(repo := GitHubRepo("hsutter/cppfront")) { 
+			repo.add("source");
+			repo.add("include");
+			(exit_code := ensure_cppfront(repo.path())) if exit_code != 0 {
+				return exit_code;
+			}
+		}
+
+		ensure_std_modules();
+		generate_cpp2b_module();
+
 		transpile_source_dir: fs::path = ".cache/cpp2/source";
+		cpp2_source_files: std::vector<fs::path> = ();
+		ec: std::error_code = ();
+
+		for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
+			if p.extension() != ".cpp" { continue; }
+			fs::permissions(p, fs::perms::others_write, fs::perm_options::add, ec);
+			warn_if_error("perms", p, ec);
+			fs::remove(p, ec);
+			warn_if_error("remove", p, ec);
+		}
 
 		for fs::recursive_directory_iterator("src") do(p: fs::path) {
-			if p.extension() == ".cpp2" {
-				transpile_cpp2(p, transpile_source_dir);
-			}
-		} 
+			if p.extension() != ".cpp2" { continue; }
+			cpp2_source_files.push_back(p);
+			transpile_cpp2(p, transpile_source_dir);
+		}
+
+		transpile_futures: std::vector<std::future<void>> = ();
+		cpp2b_parse_futures: std::vector<std::future<std::optional<cpp2b_source_module_info>>> = ();
+		transpile_futures.reserve(cpp2_source_files.size());
+		cpp2b_parse_futures.reserve(cpp2_source_files.size());
+
+		for cpp2_source_files do(src_file: fs::path) {
+			transpile_futures.emplace_back(std::async(std::launch::async, transpile_cpp2, src_file, transpile_source_dir));
+			cpp2b_parse_futures.emplace_back(std::async(std::launch::async, cpp2b_parse_source, src_file));
+		}
+
+		for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
+			if p.extension() != ".cpp2" { continue; }
+			fs::permissions(p, fs::perms::others_read, ec);
+			warn_if_error("perms", p, ec);
+		}
 
 		return 0;
 	}
@@ -201,3 +407,77 @@ subcommands: type = {
 		return 1;
 	}
 }
+
+cpp2b_source_module_info: @struct type = {
+	exported: bool;
+	imports: std::vector<std::string>;
+	name: std::string;
+	partition: std::optional<std::string>;
+
+	is_primary: (this) -> bool = !partition.has_value();
+}
+
+cpp2b_source_binary_info: type = {
+	imports: std::vector<std::string>;
+}
+
+cpp2b_source_info: type == std::variant<cpp2b_source_binary_info, cpp2b_source_module_info>;
+
+as_sv: (range) -> std::string_view = std::string_view(range.begin(), range.end());
+
+ltrim: (str) -> std::string_view = {
+	i:=0U; while str.size() > i next i++ {
+		if std::isspace(str[i]) { break; }
+	}
+
+	return std::string_view(str).substr(i, str.size() - i);
+}
+
+rtrim: (str) -> std::string_view = {
+	i:=str.ssize(); while i > 0 next i-- {
+		if std::isspace(str[i]) { break; }
+		if i == 0 { break; }
+	}
+
+	return std::string_view(str).substr(0, i);
+}
+
+lstrip: (str, amount) -> std::string_view = {
+	return std::string_view(str).substr(amount, str.size() - amount);
+}
+
+cpp2b_parse_source: (source_file: fs::path) -> std::optional<cpp2b_source_module_info> = {
+	stream: std::ifstream = source_file;
+	statement: std::string = "";
+
+	// without this cppfront thinks stream is never used
+	assert(stream);
+
+	while std::getline(stream, statement, ';') {
+		trimmed_statement := statement.ltrim();
+		kw_export: std::string_view = "export";
+		kw_module: std::string_view = "module";
+
+		if trimmed_statement.starts_with(kw_export) {
+			trimmed_statement = trimmed_statement.lstrip(kw_export.size()).ltrim();
+			if !trimmed_statement.starts_with(kw_module) { break; }
+
+			module_name := trimmed_statement.lstrip(kw_module.size()).ltrim();
+			partition_start := module_name.find(':');
+			if partition_start != std::string::npos {
+				module_name = module_name.substr(0, partition_start).rtrim();
+			} else {
+				module_name = module_name.rtrim();
+			}
+
+			mod_info: cpp2b_source_module_info = ();
+
+			mod_info.name = std::string(module_name);
+			mod_info.exported = true;
+
+			return mod_info;
+		}
+	}
+
+	return std::nullopt;
+} 

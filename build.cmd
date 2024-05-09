@@ -1,6 +1,8 @@
 @echo off
 
-set cppfront=%~dp0.cache\tools\cppfront.exe
+set root_dir=%~dp0
+set tools_dir=%~dp0.cache\tools\
+set cppfront=%tools_dir%\cppfront.exe
 set cppfront_include_dir=%~dp0.cache\repos\cppfront\include
 set cpp2b_dist=%~dp0dist\debug\cpp2b
 set modules_dir=%~dp0.cache\modules
@@ -22,7 +24,7 @@ if exist "%vs_install_dir%\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.t
 )
 
 if "%vs_tools_version%"=="" (
-	echo Cannot find VC tools installed on your system
+	echo ERROR: cannot find VC tools installed on your system
 	exit 1
 )
 
@@ -39,7 +41,7 @@ call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" /no_logo
 if not exist "%modules_dir%\std.ifc" (
 	echo Compiling std module...
 	pushd %modules_dir%
-	cl /std:c++latest /EHsc /nologo /W4 /MTd /c "%vs_tools_dir%\modules\std.ixx"
+	cl /D"_CRT_SECURE_NO_WARNINGS=1" /std:c++latest /EHsc /nologo /W4 /MTd /c "%vs_tools_dir%\modules\std.ixx"
 	popd
 )
 
@@ -50,11 +52,40 @@ if not exist "%modules_dir%\std.compat.ifc" (
 	popd
 )
 
+if not exist "%root_dir%.cache\cpp2\source\_build" ( mkdir "%root_dir%.cache\cpp2\source\_build" )
+echo INFO: compiling cpp2b module...
+if exist "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" (
+    del "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" /F
+)
+
+setlocal EnableExtensions EnableDelayedExpansion
+for /f "delims=" %%A in ('type "%root_dir%share\cpp2b.tpl.cppm"') do (
+    set "string=%%A"
+    set "modified=!string:@CPP2B_PROJECT_ROOT@=%root_dir%!"
+    echo !modified!>>"%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
+)
+endlocal
+
+@REM attrib +r "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
+
+pushd %modules_dir%
+cl /nologo ^
+  /std:c++latest /W4 /MTd /EHsc ^
+  /reference "%modules_dir%\std.ifc" ^
+  /reference "%modules_dir%\std.compat.ifc" ^
+  /c "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" > NUL
+popd
+
+if %ERRORLEVEL% neq 0 (
+	echo ERROR: failed to compile cpp2b module
+	exit %ERRORLEVEL%
+)
+
 if not exist %cppfront% (
 	pushd .cache\repos\cppfront\source
-	echo Compiling cppfront...
+	echo INFO: compiling cppfront...
 	cl /nologo /std:c++latest /EHsc cppfront.cpp
-	xcopy /y /q cppfront.exe %cppfront%
+	xcopy cppfront.exe %tools_dir% /Y /Q
 	popd
 )
 
@@ -63,9 +94,10 @@ if not exist %cppfront% (
 if %ERRORLEVEL% neq 0 exit %ERRORLEVEL%
 
 cl /nologo src/main.cpp ^
-  /diagnostics:caret /permissive- ^
+  /diagnostics:column /permissive- ^
   /reference "%modules_dir%\std.ifc" "%modules_dir%\std.obj" ^
   /reference "%modules_dir%\std.compat.ifc" "%modules_dir%\std.compat.obj" ^
+  /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
   /std:c++latest /W4 /MTd /EHsc ^
   -I"%cppfront_include_dir%" ^
   /Fe"%cpp2b_dist%"

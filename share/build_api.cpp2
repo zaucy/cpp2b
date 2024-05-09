@@ -1,0 +1,7 @@
+export cpp2: namespace = {
+	build: type = {
+		use_cppfront: (input this, commitish) -> void = {
+			
+		}
+	}
+}
