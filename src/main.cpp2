@@ -221,10 +221,6 @@ main: (args) -> int = {
 		}
 	}
 
-	cpp2b_config_file := find_closest_file("cpp2b.toml").expect("Cannot find cpp2b config file. Are you sure you're running cpp2b in a cpp2b project?");
-
-	fs::current_path(cpp2b_config_file.parent_path());
-
 	ensure_dir(".cache/cpp2/mod");
 	ensure_dir(".cache/cpp2/bin");
 	ensure_dir(".cache/cpp2/log");
