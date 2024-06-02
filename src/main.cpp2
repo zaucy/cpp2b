@@ -140,7 +140,7 @@ ensure_std_modules: () = {
 }
 
 build_cpp1_module: (name: std::string, sources, module_deps) = {
-	std::println("INFO: compiling module {}...", name);
+	std::print("INFO: compile module {}...", name);
 	d := fs::absolute(modules_dir());
 	bmi := d / ("(name)$.ifc");
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc /c";
@@ -164,8 +164,12 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 
 	cwd := fs::current_path();
 	fs::current_path(d);
+  before := std::chrono::high_resolution_clock::now();
 	exit_code := std::system(cmd_str.c_str());
+  after := std::chrono::high_resolution_clock::now();
 	fs::current_path(cwd);
+
+  std::println("\b\b\b ({}ms)", std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count());
 
 	if exit_code != 0 {
 		std::println("ERROR: failed to compile module {} - see log {}", name, log_path.generic_string());
@@ -213,9 +217,7 @@ main: (args) -> int = {
 
 	if constexpr cpp2b::compiler() == cpp2b::compiler_type::msvc {
 		if !has_msvc_env_vars() {
-			(exit_code := run_with_msvc_env_vars(argz)) {
-				return exit_code;
-			}
+      return run_with_msvc_env_vars(argz);
 		} else {
 			std::println("INFO: using vs tools {}", getenv_sv("VCToolsVersion").expect("msvc env internal error"));
 		}
@@ -273,6 +275,7 @@ transpile_cpp2_result: @struct type = {
   cpp1_output: fs::path;
   output_log: fs::path;
   cppfront_exit_code: int;
+  duration: std::chrono::milliseconds;
 }
 
 transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
@@ -285,7 +288,11 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	cppfront := fs::absolute(".cache/cpp2/tools/cppfront(executable_extension())$");
 	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (result.cpp1_output.string())$ -pure -import-std -add-source-info -format-colon-errors (cmd_log_output(result.output_log))$";
 	ensure_dir(result.cpp1_output.parent_path());
+
+  before := std::chrono::high_resolution_clock::now();
 	result.cppfront_exit_code = std::system(cmd_str.c_str());
+  after := std::chrono::high_resolution_clock::now();
+  result.duration = duration_cast<std::chrono::milliseconds>(after - before);
 
   return result;
 }
@@ -454,7 +461,7 @@ subcommands: type = {
         return info.cppfront_exit_code;
       }
 
-      std::println("INFO: transpiled {} -> {}", info.src.generic_string(), info.cpp1_output.generic_string());
+      std::println("INFO: transpile {} -> {} ({}ms)", info.src.generic_string(), info.cpp1_output.generic_string(), info.duration.count());
     }
 
     for cpp2b_parse_futures do(inout fut) {
