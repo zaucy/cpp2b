@@ -65,7 +65,7 @@ function ensure_gh_repo_subdir() {
   if ! [ -d $repo_subdir_path ]; then
     cd $repo_path
     log_info "checking out repo $repo/$reposubdir"
-    git sparse-checkout add $repo_subdir --quiet
+    git sparse-checkout add $repo_subdir
     cd $ROOT_DIR
   fi
 }

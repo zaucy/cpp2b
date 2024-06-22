@@ -7,6 +7,8 @@ set cppfront_include_dir=%~dp0.cache\repos\cppfront\include
 set cpp2b_dist=%~dp0dist\debug\cpp2b
 set modules_dir=%~dp0.cache\modules
 
+if not exist .cache\cpp2 ( mkdir .cache\cpp2 )
+if not exist .cache\cpp2\source ( mkdir .cache\cpp2\source )
 if not exist .cache\repos ( mkdir .cache\repos )
 if not exist %modules_dir% ( mkdir %modules_dir% )
 if not exist .cache\tools ( mkdir .cache\tools )
@@ -89,18 +91,23 @@ if not exist %cppfront% (
 	popd
 )
 
-%cppfront% src/main.cpp2 -pure -import-std -add-source-info -format-colon-errors
+if not exist "%root_dir%.cache/cpp2/source/src" ( mkdir "%root_dir%.cache/cpp2/source/src" )
+
+%cppfront% src/main.cpp2 -pure -import-std -add-source-info -format-colon-errors -o "%root_dir%.cache/cpp2/source/src/main.cpp"
 
 if %ERRORLEVEL% neq 0 exit %ERRORLEVEL%
 
-cl /nologo src/main.cpp ^
+
+cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
   /diagnostics:column /permissive- ^
   /reference "%modules_dir%\std.ifc" "%modules_dir%\std.obj" ^
   /reference "%modules_dir%\std.compat.ifc" "%modules_dir%\std.compat.obj" ^
   /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
   /std:c++latest /W4 /MTd /EHsc ^
+  /DEBUG:FULL /Zi ^
   -I"%cppfront_include_dir%" ^
-  /Fe"%cpp2b_dist%"
+  /Fe"%cpp2b_dist%" ^
+  /Fd"%cpp2b_dist%.pdb"
 
 if %ERRORLEVEL% neq 0 exit %ERRORLEVEL%
 

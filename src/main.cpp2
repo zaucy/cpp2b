@@ -51,14 +51,16 @@ GitHubRepo: type = {
 
 		if !fs::exists(path() / ".git") {
 			ensure_dir(path());
-			git_("clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
+			git_("clone --depth=1 --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
 		}
 	}
 
 	private git_: (this, args: std::string) = {
 		cmd_str: std::string = "git -C (path().string())$ " + args;
 		std::println("SUBCOMMAND: {}", cmd_str);
-		std::system(cmd_str.c_str());
+		if std::system(cmd_str.c_str()) != 0 {
+			std::abort();
+		}
 	}
 
 	path: (this) -> fs::path = {
@@ -67,7 +69,7 @@ GitHubRepo: type = {
 
 	add: (this, subpath: std::string) = {
 		if !fs::exists(path() / subpath) {
-			git_("sparse-checkout add (subpath)$ --quiet");
+			git_("sparse-checkout add (subpath)$");
 		}
 	}
 }
