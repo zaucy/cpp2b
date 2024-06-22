@@ -166,12 +166,11 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 
 	cwd := fs::current_path();
 	fs::current_path(d);
-	before := std::chrono::high_resolution_clock::now();
-	exit_code := std::system(cmd_str.c_str());
-	after := std::chrono::high_resolution_clock::now();
+	duration: std::chrono::milliseconds;
+	exit_code := measure(:() std::system(cmd_str$.c_str()), out duration);
 	fs::current_path(cwd);
 
-	std::println("\b\b\b ({}ms)", std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count());
+	std::println("\b\b\b ({}ms)", duration.count());
 
 	if exit_code != 0 {
 		std::println("ERROR: failed to compile module {} - see log {}", name, log_path.generic_string());
@@ -280,6 +279,14 @@ transpile_cpp2_result: @struct type = {
 	duration: std::chrono::milliseconds;
 }
 
+measure: (move fn, out duration: std::chrono::milliseconds) -> _ = {
+	before := std::chrono::high_resolution_clock::now();
+	result := fn();
+	after := std::chrono::high_resolution_clock::now();
+	duration = duration_cast<std::chrono::milliseconds>(after - before);
+	return result;
+}
+
 transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	result: transpile_cpp2_result = ();
 	result.src = fs::path(src);
@@ -291,10 +298,10 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (result.cpp1_output.string())$ -pure -import-std -add-source-info -format-colon-errors (cmd_log_output(result.output_log))$";
 	ensure_dir(result.cpp1_output.parent_path());
 
-	before := std::chrono::high_resolution_clock::now();
-	result.cppfront_exit_code = std::system(cmd_str.c_str());
-	after := std::chrono::high_resolution_clock::now();
-	result.duration = duration_cast<std::chrono::milliseconds>(after - before);
+	result.cppfront_exit_code = measure(
+		:() std::system(cmd_str$.c_str()),
+		out result.duration,
+	);
 
 	return result;
 }
