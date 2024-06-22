@@ -162,16 +162,16 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 
 	cmd_str += " /ifcOutput \"(bmi.string())$\"";
 
-  cmd_str += cmd_log_output(fs::absolute(log_path));
+	cmd_str += cmd_log_output(fs::absolute(log_path));
 
 	cwd := fs::current_path();
 	fs::current_path(d);
-  before := std::chrono::high_resolution_clock::now();
+	before := std::chrono::high_resolution_clock::now();
 	exit_code := std::system(cmd_str.c_str());
-  after := std::chrono::high_resolution_clock::now();
+	after := std::chrono::high_resolution_clock::now();
 	fs::current_path(cwd);
 
-  std::println("\b\b\b ({}ms)", std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count());
+	std::println("\b\b\b ({}ms)", std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count());
 
 	if exit_code != 0 {
 		std::println("ERROR: failed to compile module {} - see log {}", name, log_path.generic_string());
@@ -219,7 +219,7 @@ main: (args) -> int = {
 
 	if constexpr cpp2b::compiler() == cpp2b::compiler_type::msvc {
 		if !has_msvc_env_vars() {
-      return run_with_msvc_env_vars(argz);
+			return run_with_msvc_env_vars(argz);
 		} else {
 			std::println("INFO: using vs tools {}", getenv_sv("VCToolsVersion").expect("msvc env internal error"));
 		}
@@ -269,34 +269,34 @@ executable_extension: () -> std::string_view =  {
 }
 
 cmd_log_output: (log_file_path: fs::path) -> std::string = {
-  return "2>&1 > (log_file_path.string())$";
+	return "2>&1 > (log_file_path.string())$";
 }
 
 transpile_cpp2_result: @struct type = {
-  src: fs::path;
-  cpp1_output: fs::path;
-  output_log: fs::path;
-  cppfront_exit_code: int;
-  duration: std::chrono::milliseconds;
+	src: fs::path;
+	cpp1_output: fs::path;
+	output_log: fs::path;
+	cppfront_exit_code: int;
+	duration: std::chrono::milliseconds;
 }
 
 transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
-  result: transpile_cpp2_result = ();
-  result.src = fs::path(src);
+	result: transpile_cpp2_result = ();
+	result.src = fs::path(src);
 	result.cpp1_output = out_dir / fs::path(src).replace_extension(".cpp");
-  result.output_log = fs::path(".cache") / "cpp2" / "log" / "transpile" / fs::path(src).replace_extension(".log");
-  ensure_dir(result.output_log.parent_path());
+	result.output_log = fs::path(".cache") / "cpp2" / "log" / "transpile" / fs::path(src).replace_extension(".log");
+	ensure_dir(result.output_log.parent_path());
 
 	cppfront := fs::absolute(".cache/cpp2/tools/cppfront(executable_extension())$");
 	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (result.cpp1_output.string())$ -pure -import-std -add-source-info -format-colon-errors (cmd_log_output(result.output_log))$";
 	ensure_dir(result.cpp1_output.parent_path());
 
-  before := std::chrono::high_resolution_clock::now();
+	before := std::chrono::high_resolution_clock::now();
 	result.cppfront_exit_code = std::system(cmd_str.c_str());
-  after := std::chrono::high_resolution_clock::now();
-  result.duration = duration_cast<std::chrono::milliseconds>(after - before);
+	after := std::chrono::high_resolution_clock::now();
+	result.duration = duration_cast<std::chrono::milliseconds>(after - before);
 
-  return result;
+	return result;
 }
 
 getenv_sv: (env_var: *const char) -> std::optional<std::string_view> = {
@@ -359,26 +359,26 @@ warn_if_error: (context, p: fs::path, ec: std::error_code) -> void = {
 }
 
 find_root_dir: (dir: fs::path) -> std::optional<fs::path> = {
-  if dir.empty() { return std::nullopt; }
+	if dir.empty() { return std::nullopt; }
 
-  if fs::exists(dir / "build.cpp2") {
-    return dir;
-  }
+	if fs::exists(dir / "build.cpp2") {
+		return dir;
+	}
 
-  if !dir.has_parent_path() { return std::nullopt; }
+	if !dir.has_parent_path() { return std::nullopt; }
 
-  return find_root_dir(dir.parent_path());
+	return find_root_dir(dir.parent_path());
 }
 
 build_binary_result: @struct type = {
-  outpath: fs::path;
-  exit_code: int;
+	outpath: fs::path;
+	exit_code: int;
 }
 build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(executable_extension());
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
-  ensure_dir(bin_outpath.parent_path());
+	ensure_dir(bin_outpath.parent_path());
 
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc";
@@ -387,14 +387,14 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 		imp_obj := d / ("(imp)$.obj");
 		cmd_str += " /reference \"(imp_bmi.string())$\" \"(imp_obj.string())$\"";
 	}
-  cmd_str += " \"(transpiled_src .string())$\"";
-  cmd_str += " -I\"(cppfront_include_dir.string())$\"";
-  cmd_str += " /Fe\"(bin_outpath.string())$\"";
+	cmd_str += " \"(transpiled_src .string())$\"";
+	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
+	cmd_str += " /Fe\"(bin_outpath.string())$\"";
 
-  result: build_binary_result = ();
-  result.outpath = bin_outpath;
-  result.exit_code = std::system(cmd_str.c_str());
-  return result;
+	result: build_binary_result = ();
+	result.outpath = bin_outpath;
+	result.exit_code = std::system(cmd_str.c_str());
+	return result;
 }
 
 subcommands: type = {
@@ -404,13 +404,12 @@ subcommands: type = {
 			return 1;
 		}
 
-    root_dir := find_root_dir(fs::current_path());
-    if !root_dir {
+		root_dir := find_root_dir(fs::current_path());
+		if !root_dir {
 			std::println("ERROR: failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
-      return 1;
-    }
-    fs::current_path(root_dir*);
-
+			return 1;
+		}
+		fs::current_path(root_dir*);
 
 		cache_dir: fs::path = ".cache/cpp2";
 
@@ -426,12 +425,12 @@ subcommands: type = {
 			return 1;
 		}
 
-    root_dir := find_root_dir(fs::current_path());
-    if !root_dir {
+		root_dir := find_root_dir(fs::current_path());
+		if !root_dir {
 			std::println("ERROR: failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
-      return 1;
-    }
-    fs::current_path(root_dir*);
+			return 1;
+		}
+		fs::current_path(root_dir*);
 
 		(repo := GitHubRepo("hsutter/cppfront")) { 
 			repo.add("source");
@@ -458,20 +457,20 @@ subcommands: type = {
 
 		src_loop: for fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::follow_directory_symlink) do(p: fs::path) {
 			if p.extension() != ".cpp2" { continue; }
-      rel_path := fs::relative(p, fs::current_path());
-      for rel_path do(rel_path_comp) {
-        if rel_path_comp.string().starts_with(".") {
-          continue src_loop;
-        }
-      }
+			rel_path := fs::relative(p, fs::current_path());
+			for rel_path do(rel_path_comp) {
+				if rel_path_comp.string().starts_with(".") {
+					continue src_loop;
+				}
+			}
 
-      cpp2_source_files.emplace_back(rel_path);
-    }
+			cpp2_source_files.emplace_back(rel_path);
+		}
 
-    if cpp2_source_files.empty() {
-      std::println("ERROR: No source files");
-      return 1;
-    }
+		if cpp2_source_files.empty() {
+			std::println("ERROR: No source files");
+			return 1;
+		}
 
 		transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
 		cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
@@ -483,34 +482,34 @@ subcommands: type = {
 			cpp2b_parse_futures.emplace_back(std::async(std::launch::async, cpp2b_parse_source, src_file));
 		}
 
-    for transpile_futures do(inout fut) {
-      info := fut.get();
-      if info.cppfront_exit_code != 0 {
-        std::println("ERROR: cppfront exited with {} while transpiling {} - see log {}", info.cppfront_exit_code, info.src.generic_string(), info.output_log.generic_string());
-        return info.cppfront_exit_code;
-      }
+		for transpile_futures do(inout fut) {
+			info := fut.get();
+			if info.cppfront_exit_code != 0 {
+				std::println("ERROR: cppfront exited with {} while transpiling {} - see log {}", info.cppfront_exit_code, info.src.generic_string(), info.output_log.generic_string());
+				return info.cppfront_exit_code;
+			}
 
-      std::println("INFO: transpile {} -> {} ({}ms)", info.src.generic_string(), info.cpp1_output.generic_string(), info.duration.count());
-    }
+			std::println("INFO: transpile {} -> {} ({}ms)", info.src.generic_string(), info.cpp1_output.generic_string(), info.duration.count());
+		}
 
-    bins: std::vector<cpp2b_source_binary_info> = ();
-    mods: std::vector<cpp2b_source_module_info> = ();
-    build_infos: std::vector<cpp2b_source_build_info> = ();
-    unknowns: std::vector<cpp2b_source_unknown_info> = ();
+		bins: std::vector<cpp2b_source_binary_info> = ();
+		mods: std::vector<cpp2b_source_module_info> = ();
+		build_infos: std::vector<cpp2b_source_build_info> = ();
+		unknowns: std::vector<cpp2b_source_unknown_info> = ();
 
-    for cpp2b_parse_futures do(inout fut) {
-      info := fut.get();
-      if info.is_mod() {
-        mods.emplace_back(info.mod());
-      } else if info.is_bin() {
-        bins.emplace_back(info.bin());
-      } else if info.is_build() {
-        build_infos.emplace_back(info.build());
-      } else {
-        std::println("ERROR: source file {} is neither a module or a binary source file", info.unknown().src.generic_string());
-        unknowns.emplace_back(info.unknown());
-      }
-    }
+		for cpp2b_parse_futures do(inout fut) {
+			info := fut.get();
+			if info.is_mod() {
+				mods.emplace_back(info.mod());
+			} else if info.is_bin() {
+				bins.emplace_back(info.bin());
+			} else if info.is_build() {
+				build_infos.emplace_back(info.build());
+			} else {
+				std::println("ERROR: source file {} is neither a module or a binary source file", info.unknown().src.generic_string());
+				unknowns.emplace_back(info.unknown());
+			}
+		}
 
 		for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
 			if p.extension() != ".cpp2" { continue; }
@@ -518,44 +517,44 @@ subcommands: type = {
 			warn_if_error("perms", p, ec);
 		}
 
-    built_modules: std::unordered_map<std::string, bool> = (
-      std::pair("cpp2b", true),
-      std::pair("std", true),
-      std::pair("std.compat", true),
-    );
+		built_modules: std::unordered_map<std::string, bool> = (
+			std::pair("cpp2b", true),
+			std::pair("std", true),
+			std::pair("std.compat", true),
+		);
 
-    for mods do(mod) {
-      std::println("WARNING: cannot build user module {} (yet)", mod.name);
-    }
+		for mods do(mod) {
+			std::println("WARNING: cannot build user module {} (yet)", mod.name);
+		}
 
-    bin_loop: for bins do(bin) {
-      for bin.imports do(imp) {
-        if !built_modules.contains(imp) {
-          std::println("ERROR: cannot build binary - missing import {}", imp);
-          continue bin_loop;
-        }
-      }
+		bin_loop: for bins do(bin) {
+			for bin.imports do(imp) {
+				if !built_modules.contains(imp) {
+					std::println("ERROR: cannot build binary - missing import {}", imp);
+					continue bin_loop;
+				}
+			}
 
-      build_result := build_binary(bin);
+			build_result := build_binary(bin);
 
-      if build_result.exit_code != 0 {
-        std::println("ERROR: failed to build binary - exit code {}", build_result.exit_code);
-        return build_result.exit_code;
-      }
+			if build_result.exit_code != 0 {
+				std::println("ERROR: failed to build binary - exit code {}", build_result.exit_code);
+				return build_result.exit_code;
+			}
 
-      std::println("INFO: successfully built binary {}", fs::relative(build_result.outpath).generic_string());
-    }
+			std::println("INFO: successfully built binary {}", fs::relative(build_result.outpath).generic_string());
+		}
 
 		return 0;
 	}
 
 	run: (args) -> int = {
-    root_dir := find_root_dir(fs::current_path());
-    if !root_dir {
+		root_dir := find_root_dir(fs::current_path());
+		if !root_dir {
 			std::println("ERROR: failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
-      return 1;
-    }
-    fs::current_path(root_dir*);
+			return 1;
+		}
+		fs::current_path(root_dir*);
 
 		std::println("TODO: run cpp2b project");
 		for args do (arg) {
@@ -580,7 +579,7 @@ cpp2b_source_module_info: @struct type = {
 }
 
 cpp2b_source_binary_info: @struct type = {
-  src: fs::path;
+	src: fs::path;
 	imports: std::vector<std::string>;
 }
 
@@ -589,14 +588,14 @@ cpp2b_source_build_info: @struct type = {
 }
 
 cpp2b_source_unknown_info: @struct type = {
-  src: fs::path;
+	src: fs::path;
 }
 
 cpp2b_source_info: @union type = {
-  unknown: cpp2b_source_unknown_info;
-  mod: cpp2b_source_module_info;
-  bin: cpp2b_source_binary_info;
-  build: cpp2b_source_build_info;
+	unknown: cpp2b_source_unknown_info;
+	mod: cpp2b_source_module_info;
+	bin: cpp2b_source_binary_info;
+	build: cpp2b_source_build_info;
 }
 
 as_sv: (range) -> std::string_view = std::string_view(range.begin(), range.end());
@@ -623,50 +622,50 @@ lstrip: (str, amount) -> std::string_view = {
 }
 
 contains_any_whitespace: (str: std::string_view) -> bool = {
-  for str do(c: char) {
-    if std::isspace(c) {
-      return true;
-    }
-  }
-  return false;
+	for str do(c: char) {
+		if std::isspace(c) {
+			return true;
+		}
+	}
+	return false;
 }
 
 cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 	stream: std::ifstream = source_file;
 	statement: std::string = "";
-  imports: std::vector<std::string> = ();
+	imports: std::vector<std::string> = ();
 
 	// without this cppfront thinks stream is never used
 	assert(stream);
 
-  result: cpp2b_source_info = ();
-  result.set_unknown(cpp2b_source_unknown_info(source_file));
+	result: cpp2b_source_info = ();
+	result.set_unknown(cpp2b_source_unknown_info(source_file));
 
 	while std::getline(stream, statement, ';') {
 		trimmed_statement := statement.ltrim();
 		kw_import: std::string_view = "import";
 
-    if trimmed_statement.starts_with(kw_import) {
+		if trimmed_statement.starts_with(kw_import) {
 			import_name := trimmed_statement.lstrip(kw_import.size()).ltrim().rtrim();
-      if !contains_any_whitespace(import_name) {
-        imports.emplace_back(import_name);
-      }
-    }
-  }
+			if !contains_any_whitespace(import_name) {
+				imports.emplace_back(import_name);
+			}
+		}
+	}
 
-  if std::ranges::find(imports, "std") == imports.end() {
-    imports.emplace_back("std");
-  }
+	if std::ranges::find(imports, "std") == imports.end() {
+		imports.emplace_back("std");
+	}
 
-  if source_file.filename() == "build.cpp2" {
-    build_info: cpp2b_source_build_info = ();
-    build_info.imports = imports;
-    result.set_build(build_info);
-    return result;
-  }
+	if source_file.filename() == "build.cpp2" {
+		build_info: cpp2b_source_build_info = ();
+		build_info.imports = imports;
+		result.set_build(build_info);
+		return result;
+	}
 
-  stream.clear();
-  stream.seekg(0);
+	stream.clear();
+	stream.seekg(0);
 
 	while std::getline(stream, statement, ';') {
 		trimmed_statement := statement.ltrim();
@@ -691,28 +690,28 @@ cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 			mod_info.imports = imports;
 			mod_info.exported = true;
 
-      result.set_mod(mod_info);
+			result.set_mod(mod_info);
 			return result;
 		}
 	}
 
-  stream.clear();
-  stream.seekg(0);
+	stream.clear();
+	stream.seekg(0);
 
-  line: std::string = ();
+	line: std::string = ();
 	while std::getline(stream, line) {
 		trimmed_line := line.ltrim();
-    if trimmed_line.starts_with("main") {
-      after_main := trimmed_line.substr(4).ltrim();
-      if after_main.empty() || after_main[0] == ':' {
-        bin_info: cpp2b_source_binary_info = ();
-        bin_info.src = source_file;
-        bin_info.imports = imports;
-        result.set_bin(bin_info);
-        return result;
-      }
-    }
-  }
+		if trimmed_line.starts_with("main") {
+			after_main := trimmed_line.substr(4).ltrim();
+			if after_main.empty() || after_main[0] == ':' {
+				bin_info: cpp2b_source_binary_info = ();
+				bin_info.src = source_file;
+				bin_info.imports = imports;
+				result.set_bin(bin_info);
+				return result;
+			}
+		}
+	}
 
 	return result;
-} 
+}
