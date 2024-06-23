@@ -154,7 +154,6 @@ ensure_std_modules: () = {
 }
 
 build_cpp1_module: (name: std::string, sources, module_deps) = {
-	log_info("compile module {}...", name);
 	d := fs::absolute(modules_dir());
 	bmi := d / ("(name)$.ifc");
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc /c";
@@ -182,7 +181,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	exit_code := measure(:() std::system(cmd_str$.c_str()), out duration);
 	fs::current_path(cwd);
 
-	std::println("\b\b\b ({}ms)", duration.count());
+	log_info("compile module {} ({}ms)", name, duration.count());
 
 	if exit_code != 0 {
 		log_error("failed to compile module {} - see log {}", name, log_path.generic_string());
@@ -326,18 +325,18 @@ getenv_sv: (env_var: *const char) -> std::optional<std::string_view> = {
 	return std::string_view(val, std::strlen(val));
 }
 
-unix_compile_cppfront: (cc: std::string_view, cppfront_source: fs::path, out_cppfront_binary: fs::path) -> int = {
+unix_compile_cppfront: (cc: std::string_view, cppfront_source: fs::path, out_cppfront_binary: fs::path, log_path: fs::path) -> int = {
 	cwd := fs::current_path();
-	cmd_str: std::string = "(cc)$ -lstdc++ -lc -lm -std=c++20 cppfront.cpp -o (out_cppfront_binary.string())$";
+	cmd_str: std::string = "(cc)$ -lstdc++ -lc -lm -std=c++20 cppfront.cpp -o (out_cppfront_binary.string())$ (cmd_log_output(fs::absolute(log_path)))$";
 	fs::current_path(cppfront_source / "source");
 	exit_code := std::system(cmd_str.c_str());
 	fs::current_path(cwd);
 	return exit_code;
 }
 
-cl_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path) -> int = {
+cl_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path, log_path: fs::path) -> int = {
 	cwd := fs::current_path();
-	cmd_str: std::string = "cl.exe /nologo /std:c++latest /EHsc cppfront.cpp";
+	cmd_str: std::string = "cl.exe /nologo /std:c++latest /EHsc cppfront.cpp (cmd_log_output(fs::absolute(log_path)))$";
 	fs::current_path(cppfront_source / "source");
 	exit_code := std::system(cmd_str.c_str());
 	if exit_code == 0 {
@@ -352,16 +351,18 @@ ensure_cppfront: (cppfront_source: fs::path) -> int = {
 	if !fs::exists(cppfront) {
 		log_info("compiling cppfront...");
 
+		cppfront_compile_log_path: fs::path = ".cache/cpp2/log/cppfront.log";
+
 		if cpp2b::compiler() == cpp2b::compiler_type::clang {
-			return unix_compile_cppfront("clang", fs::absolute(cppfront_source), fs::absolute(cppfront));
+			return unix_compile_cppfront("clang", fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
 		}
 
 		if cpp2b::compiler() == cpp2b::compiler_type::gcc {
-			return unix_compile_cppfront("gcc", fs::absolute(cppfront_source), fs::absolute(cppfront));
+			return unix_compile_cppfront("gcc", fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
 		}
 
 		if cpp2b::compiler() == cpp2b::compiler_type::msvc {
-			return cl_compile_cppfront(fs::absolute(cppfront_source), fs::absolute(cppfront));
+			return cl_compile_cppfront(fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
 		}
 
 		log_error("unknown compiler");
@@ -392,11 +393,15 @@ find_root_dir: (dir: fs::path) -> std::optional<fs::path> = {
 build_binary_result: @struct type = {
 	outpath: fs::path;
 	exit_code: int;
+	log_path: fs::path;
+	duration: std::chrono::milliseconds;
 }
 build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(executable_extension());
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
+	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
+	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
 
 	d := fs::absolute(modules_dir());
@@ -409,10 +414,12 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	cmd_str += " \"(transpiled_src .string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(bin_outpath.string())$\"";
+	cmd_str += " (cmd_log_output(fs::absolute(log_path)))$";
 
 	result: build_binary_result = ();
 	result.outpath = bin_outpath;
-	result.exit_code = std::system(cmd_str.c_str());
+	result.exit_code = measure(:() std::system(cmd_str$.c_str()), out result.duration);
+	result.log_path = log_path;
 	return result;
 }
 
@@ -549,7 +556,7 @@ subcommands: type = {
 		bin_loop: for bins do(bin) {
 			for bin.imports do(imp) {
 				if !built_modules.contains(imp) {
-					log_error("cannot build binary - missing import {}", imp);
+					log_error("cannot build binary {} - missing import {}", bin.src.generic_string(), imp);
 					continue bin_loop;
 				}
 			}
@@ -561,7 +568,7 @@ subcommands: type = {
 				return build_result.exit_code;
 			}
 
-			log_info("successfully built binary {}", fs::relative(build_result.outpath).generic_string());
+			log_info("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
 		}
 
 		return 0;
