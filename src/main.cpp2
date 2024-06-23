@@ -158,10 +158,10 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	d := fs::absolute(modules_dir());
 	bmi := d / ("(name)$.ifc");
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc /c";
-  log_path := fs::path(".cache") / "cpp2" / "log" / "build" / "(name)$.log";
+	log_path := fs::path(".cache") / "cpp2" / "log" / "build" / "(name)$.log";
 
 	fs::remove(bmi);
-  ensure_dir(log_path.parent_path());
+	ensure_dir(log_path.parent_path());
 
 	for module_deps do (dep: std::string) {
 		dep_bmi := d / ("(dep)$.ifc");
