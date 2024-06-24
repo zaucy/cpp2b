@@ -1,5 +1,6 @@
 import std.compat;
 import cpp2b;
+import dylib;
 
 fs: namespace == std::filesystem;
 
@@ -28,7 +29,7 @@ modules_dir: (base: fs::path) -> fs::path = {
 	return base / ".cache" / "cpp2" / "mod";
 }
 
-binaries_dir: () modules_dir(fs::current_path());
+binaries_dir: () binaries_dir(fs::current_path());
 binaries_dir: (base: fs::path) -> fs::path = {
 	return base / ".cache" / "cpp2" / "bin";
 }
@@ -103,7 +104,7 @@ module_source_extension: (compiler: cpp2b::compiler_type) -> std::string_view = 
 }
 
 generate_cpp2b_module: () = {
-	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.tpl.cppm";
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.cppm.tpl";
 	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
 
 	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
@@ -134,6 +135,38 @@ generate_cpp2b_module: () = {
 	build_cpp1_module("cpp2b", :std::vector=(cpp2b_module_source_path), :std::vector=("std", "std.compat"));
 }
 
+generate_cpp2b_build_module: () = {
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.build.cppm.tpl";
+	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b.build(module_source_extension(cpp2b::compiler()))$";
+
+	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
+	cpp2b_module_template_stream: std::ifstream = (cpp2b_module_template_path);
+
+	vars: std::unordered_map<std::string, std::string> = (
+		std::pair("@CPP2B_PROJECT_ROOT@", fs::current_path().string())
+	);
+	
+	line: std::string = "";
+	assert(cpp2b_module_template_stream);
+	while std::getline(cpp2b_module_template_stream, line) {
+		for vars do (entry) {
+			var_name := entry.first;
+			var_value := entry.second;
+			pos := line.find(var_name);
+
+			if pos != std::string::npos {
+				line.replace(pos, var_name.size(), var_value);
+			}
+		}
+		cpp2b_module_source_stream << line << "\n";
+	}
+
+	cpp2b_module_template_stream.close();
+	cpp2b_module_source_stream.close();
+
+	build_cpp1_module("cpp2b.build", :std::vector=(cpp2b_module_source_path), :std::vector=("std", "std.compat"));
+}
+
 get_vs_tools_dir: () -> fs::path = {
 	return getenv_sv("VCToolsInstallDir").expect("missing 'VCToolsInstallDir' environment variable");
 }
@@ -156,7 +189,7 @@ ensure_std_modules: () = {
 build_cpp1_module: (name: std::string, sources, module_deps) = {
 	d := fs::absolute(modules_dir());
 	bmi := d / ("(name)$.ifc");
-	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc /c";
+	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP";
 	log_path := fs::path(".cache") / "cpp2" / "log" / "build" / "(name)$.log";
 
 	fs::remove(bmi);
@@ -184,7 +217,8 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	log_info("compile module {} ({}ms)", name, duration.count());
 
 	if exit_code != 0 {
-		log_error("failed to compile module {} - see log {}", name, log_path.generic_string());
+		log_error("failed to compile module {}", name);
+		print_log_file(log_path);
 		std::abort();
 	}
 }
@@ -275,6 +309,16 @@ executable_extension: () -> std::string_view =  {
 		return ".exe";
 	} else {
 		return "";
+	}
+}
+
+shared_library_extension: () -> std::string_view =  {
+	if constexpr cpp2b::target_platform() == cpp2b::platform::windows {
+		return ".dll";
+	} else if constexpr(cpp2b::target_platform() == cpp2b::platform::macos) {
+		return ".dylib";
+	} else {
+		return ".so";
 	}
 }
 
@@ -374,7 +418,7 @@ ensure_cppfront: (cppfront_source: fs::path) -> int = {
 
 warn_if_error: (context, p: fs::path, ec: std::error_code) -> void = {
 	if ec {
-		std::println("WARN: ({}) {} - {}", context, p.generic_string(), ec.message());
+		log_warning("({}) {} - {}", context, p.generic_string(), ec.message());
 	}
 }
 
@@ -405,7 +449,7 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	ensure_dir(bin_outpath.parent_path());
 
 	d := fs::absolute(modules_dir());
-	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MTd /EHsc";
+	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
 		imp_obj := d / ("(imp)$.obj");
@@ -421,6 +465,66 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	result.exit_code = measure(:() std::system(cmd_str$.c_str()), out result.duration);
 	result.log_path = log_path;
 	return result;
+}
+
+
+cpp2b_detail_build_impl: type = {
+}
+cpp2b_detail_build_binary_name: (
+	copy impl: *cpp2b_detail_build_impl,
+	copy p: std::filesystem::path,
+	copy new_binary_name: std::string_view,
+) -> void = {
+	std::println("cpp2b_detail_build_binary_name CALLED!");
+	std::println("{} wants to be renamed to {}", p.string(), new_binary_name);
+}
+
+cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
+	// empty. this is just so we can decltype the signature
+}
+
+build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
+	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
+	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
+	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
+	ensure_dir(log_path.parent_path());
+	ensure_dir(bin_outpath.parent_path());
+
+	d := fs::absolute(modules_dir());
+	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL";
+	for info.imports do (imp: std::string) {
+		imp_bmi := d / ("(imp)$.ifc");
+		imp_obj := d / ("(imp)$.obj");
+		cmd_str += " /reference \"(imp_bmi.string())$\" \"(imp_obj.string())$\"";
+	}
+	cmd_str += " \"(transpiled_src .string())$\"";
+	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
+	cmd_str += " /Fe\"(fs::relative(bin_outpath).string())$\"";
+	cmd_str += " /link";
+	cmd_str += " (cmd_log_output(fs::relative(log_path)))$";
+
+	result: build_binary_result = ();
+	result.outpath = bin_outpath;
+	result.exit_code = measure(:() std::system(cmd_str$.c_str()), out result.duration);
+	result.log_path = log_path;
+	return result;
+}
+
+print_log_file: (p: fs::path) -> void = {
+	stream: std::ifstream = p;
+	line: std::string = "";
+	while std::getline(stream, line) {
+		std::cerr << line << "\n";
+	}
+	stream.close();
+}
+
+assert_symbol: (d: dylib, symbol) = {
+	if !d.has_symbol(symbol) {
+		log_error("missing symbol '{}'", symbol);
+		std::abort();
+	}
 }
 
 subcommands: type = {
@@ -468,9 +572,11 @@ subcommands: type = {
 
 		ensure_std_modules();
 		generate_cpp2b_module();
+		generate_cpp2b_build_module();
 
 		transpile_source_dir: fs::path = ".cache/cpp2/source";
 		cpp2_source_files: std::vector<fs::path> = ();
+		cpp1_module_source_files: std::vector<fs::path> = ();
 		ec: std::error_code = ();
 
 		for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
@@ -482,19 +588,27 @@ subcommands: type = {
 		}
 
 		src_loop: for fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::follow_directory_symlink) do(p: fs::path) {
-			if p.extension() != ".cpp2" { continue; }
-			rel_path := fs::relative(p, fs::current_path());
-			for rel_path do(rel_path_comp) {
-				if rel_path_comp.string().starts_with(".") {
-					continue src_loop;
+			if p.extension() == ".cpp2" {
+				rel_path := fs::relative(p, fs::current_path());
+				for rel_path do(rel_path_comp) {
+					if rel_path_comp.string().starts_with(".") {
+						continue src_loop;
+					}
 				}
+				cpp2_source_files.emplace_back(rel_path);
+			} else if p.extension() == ".cppm" {
+				rel_path := fs::relative(p, fs::current_path());
+				for rel_path do(rel_path_comp) {
+					if rel_path_comp.string().starts_with(".") {
+						continue src_loop;
+					}
+				}
+				cpp1_module_source_files.emplace_back(rel_path);
 			}
-
-			cpp2_source_files.emplace_back(rel_path);
 		}
 
 		if cpp2_source_files.empty() {
-			log_error("No source files");
+			log_error("No cpp2 source files");
 			return 1;
 		}
 
@@ -502,6 +616,7 @@ subcommands: type = {
 		cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
 		transpile_futures.reserve(cpp2_source_files.size());
 		cpp2b_parse_futures.reserve(cpp2_source_files.size());
+
 
 		for cpp2_source_files do(src_file: fs::path) {
 			transpile_futures.emplace_back(std::async(std::launch::async, transpile_cpp2, src_file, transpile_source_dir));
@@ -520,7 +635,7 @@ subcommands: type = {
 
 		bins: std::vector<cpp2b_source_binary_info> = ();
 		mods: std::vector<cpp2b_source_module_info> = ();
-		build_infos: std::vector<cpp2b_source_build_info> = ();
+		build_scripts: std::vector<cpp2b_source_build_info> = ();
 		unknowns: std::vector<cpp2b_source_unknown_info> = ();
 
 		for cpp2b_parse_futures do(inout fut) {
@@ -530,7 +645,7 @@ subcommands: type = {
 			} else if info.is_bin() {
 				bins.emplace_back(info.bin());
 			} else if info.is_build() {
-				build_infos.emplace_back(info.build());
+				build_scripts.emplace_back(info.build());
 			} else {
 				log_error("source file {} is neither a module or a binary source file", info.unknown().src.generic_string());
 				unknowns.emplace_back(info.unknown());
@@ -545,9 +660,57 @@ subcommands: type = {
 
 		built_modules: std::unordered_map<std::string, bool> = (
 			std::pair("cpp2b", true),
+			std::pair("cpp2b.build", true),
 			std::pair("std", true),
 			std::pair("std.compat", true),
 		);
+
+
+		for cpp1_module_source_files do(src_file: fs::path) {
+			result := cpp2b_parse_cpp1_module_statements(std::ifstream(src_file));
+
+			if result.module_name.empty() {
+				log_error("cannot find exported module in {}", src_file.generic_string());
+				std::abort();
+			}
+
+			if !result.exported {
+				log_error("module {} in {} must be exported", result.module_name, src_file.generic_string());
+				std::abort();
+			}
+			
+			build_cpp1_module(result.module_name, :std::vector=(src_file), result.imports);
+			built_modules[result.module_name] = true;
+		}
+
+		build_script_loop: for build_scripts do(build_script) {
+			for build_script.imports do(imp) {
+				if !built_modules.contains(imp) {
+					log_error("cannot build build script {} - missing import {}", build_script.src.generic_string(), imp);
+					continue build_script_loop;
+				}
+			}
+
+			build_result := build_build_script(build_script);
+
+			if build_result.exit_code != 0 {
+				log_error("failed to build {} - exit code {}", build_script.src.generic_string(), build_result.exit_code);
+				print_log_file(build_result.log_path);
+				return build_result.exit_code;
+			}
+
+			log_info("build script built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
+
+			build_dylib := dylib(build_result.outpath);
+
+			build_dylib.assert_symbol("cpp2b_detail_build");
+			build_dylib.assert_symbol("cpp2b_detail_build_binary_name");
+
+			build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
+
+			b: cpp2b_detail_build_impl = ();
+			build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
+		}
 
 		for mods do(mod) {
 			log_warning("cannot build user module {} (yet)", mod.name);
@@ -559,12 +722,18 @@ subcommands: type = {
 					log_error("cannot build binary {} - missing import {}", bin.src.generic_string(), imp);
 					continue bin_loop;
 				}
+
+				if imp == "cpp2b.build" {
+					log_error("cpp2b.build module may only be imported in build.cpp files");
+					continue bin_loop;
+				}
 			}
 
 			build_result := build_binary(bin);
 
 			if build_result.exit_code != 0 {
 				log_error("failed to build binary - exit code {}", build_result.exit_code);
+				print_log_file(build_result.log_path);
 				return build_result.exit_code;
 			}
 
@@ -610,6 +779,7 @@ cpp2b_source_binary_info: @struct type = {
 }
 
 cpp2b_source_build_info: @struct type = {
+	src: fs::path;
 	imports: std::vector<std::string>;
 }
 
@@ -656,6 +826,48 @@ contains_any_whitespace: (str: std::string_view) -> bool = {
 	return false;
 }
 
+cpp2b_parse_cpp1_module_statements: (copy stream: std::ifstream) -> (module_name: std::string, imports: std::vector<std::string>, exported: bool) = {
+	statement: std::string = "";
+	module_name = "";
+	imports = ();
+	exported = false;
+
+	while std::getline(stream, statement) {
+		trimmed_statement := statement.ltrim();
+		kw_import: std::string_view == "import";
+		kw_export: std::string_view == "export";
+		kw_module: std::string_view == "module";
+
+		if trimmed_statement.starts_with(kw_import) {
+			import_name := trimmed_statement.lstrip(kw_import.size()).ltrim().rtrim();
+			if !contains_any_whitespace(import_name) {
+				imports.emplace_back(import_name);
+			}
+		}
+
+		if trimmed_statement.starts_with(kw_export) {
+			trimmed_statement = trimmed_statement.lstrip(kw_export.size()).ltrim();
+			if !trimmed_statement.starts_with(kw_module) { continue; }
+
+			found_mod_name := trimmed_statement.lstrip(kw_module.size()).ltrim();
+			partition_start := module_name.find(':');
+			if partition_start != std::string::npos {
+				found_mod_name = found_mod_name.substr(0, partition_start).rtrim();
+			} else {
+				found_mod_name = found_mod_name.rtrim();
+			}
+
+			while !found_mod_name.empty() && (std::isspace(found_mod_name.back()) || found_mod_name.back() == ';') {
+				found_mod_name = found_mod_name.substr(0, found_mod_name.size() - 1);
+			}
+
+			module_name = std::string(found_mod_name);
+			exported = true;
+			break;
+		}
+	}
+}
+
 cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 	stream: std::ifstream = source_file;
 	statement: std::string = "";
@@ -683,8 +895,13 @@ cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 		imports.emplace_back("std");
 	}
 
+	if std::ranges::find(imports, "std.compat") == imports.end() {
+		imports.emplace_back("std.compat");
+	}
+
 	if source_file.filename() == "build.cpp2" {
 		build_info: cpp2b_source_build_info = ();
+		build_info.src = source_file;
 		build_info.imports = imports;
 		result.set_build(build_info);
 		return result;

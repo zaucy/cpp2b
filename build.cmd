@@ -61,7 +61,7 @@ if exist "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" (
 )
 
 setlocal EnableExtensions EnableDelayedExpansion
-for /f "delims=" %%A in ('type "%root_dir%share\cpp2b.tpl.cppm"') do (
+for /f "delims=" %%A in ('type "%root_dir%share\cpp2b.cppm.tpl"') do (
     set "string=%%A"
     set "modified=!string:@CPP2B_PROJECT_ROOT@=%root_dir%!"
     echo !modified!>>"%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
@@ -80,6 +80,20 @@ popd
 
 if %ERRORLEVEL% neq 0 (
 	echo ERROR: failed to compile cpp2b module
+	exit %ERRORLEVEL%
+)
+
+echo INFO: compiling dylib module...
+pushd %modules_dir%
+cl /nologo ^
+  /std:c++latest /W4 /MTd /EHsc ^
+  /reference "%modules_dir%\std.ifc" ^
+  /reference "%modules_dir%\std.compat.ifc" ^
+  /c /interface /TP "%root_dir%src\dylib.cppm" > NUL
+popd
+
+if %ERRORLEVEL% neq 0 (
+	echo ERROR: failed to compile dylib module
 	exit %ERRORLEVEL%
 )
 
@@ -102,9 +116,10 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
   /diagnostics:column /permissive- ^
   /reference "%modules_dir%\std.ifc" "%modules_dir%\std.obj" ^
   /reference "%modules_dir%\std.compat.ifc" "%modules_dir%\std.compat.obj" ^
+  /reference "%modules_dir%\dylib.ifc" "%modules_dir%\dylib.obj" ^
   /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
-  /std:c++latest /W4 /MTd /EHsc ^
-  /DEBUG:FULL /Zi ^
+  /std:c++latest /W4 /MDd /EHsc ^
+  /DEBUG:FULL /Zi /FC ^
   -I"%cppfront_include_dir%" ^
   /Fe"%cpp2b_dist%" ^
   /Fd"%cpp2b_dist%.pdb"

@@ -1,0 +1,4 @@
+EXPORTS
+   cpp2b::detail::build::create
+   cpp2b::detail::build::destroy
+   cpp2b::detail::build::binary_name
