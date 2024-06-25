@@ -43,14 +43,14 @@ call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" /no_logo
 if not exist "%modules_dir%\std.ifc" (
 	echo Compiling std module...
 	pushd %modules_dir%
-	cl /D"_CRT_SECURE_NO_WARNINGS=1" /std:c++latest /EHsc /nologo /W4 /MTd /c "%vs_tools_dir%\modules\std.ixx"
+	cl /D"_CRT_SECURE_NO_WARNINGS=1" /std:c++latest /EHsc /nologo /W4 /MDd /c "%vs_tools_dir%\modules\std.ixx"
 	popd
 )
 
 if not exist "%modules_dir%\std.compat.ifc" (
 	echo Compiling std.compat module...
 	pushd %modules_dir%
-	cl /std:c++latest /EHsc /nologo /W4 /MTd /c "%vs_tools_dir%\modules\std.compat.ixx"
+	cl /std:c++latest /EHsc /nologo /W4 /MDd /c "%vs_tools_dir%\modules\std.compat.ixx"
 	popd
 )
 
@@ -72,7 +72,7 @@ endlocal
 
 pushd %modules_dir%
 cl /nologo ^
-  /std:c++latest /W4 /MTd /EHsc ^
+  /std:c++latest /W4 /MDd /EHsc ^
   /reference "%modules_dir%\std.ifc" ^
   /reference "%modules_dir%\std.compat.ifc" ^
   /c "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" > NUL
@@ -86,7 +86,7 @@ if %ERRORLEVEL% neq 0 (
 echo INFO: compiling dylib module...
 pushd %modules_dir%
 cl /nologo ^
-  /std:c++latest /W4 /MTd /EHsc ^
+  /std:c++latest /W4 /MDd /EHsc ^
   /reference "%modules_dir%\std.ifc" ^
   /reference "%modules_dir%\std.compat.ifc" ^
   /c /interface /TP "%root_dir%src\dylib.cppm" > NUL

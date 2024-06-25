@@ -441,8 +441,22 @@ build_binary_result: @struct type = {
 	duration: std::chrono::milliseconds;
 }
 build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
+	bin_basename: fs::path;
+	if info.preferred_name {
+		bin_basename = fs::path(info.preferred_name*);
+	} else {
+		bin_basename = fs::path(info.src);
+		while !bin_basename.extension().empty() {
+			bin_basename.replace_extension("");
+		}
+	}
+
+	if bin_basename.extension().empty() {
+		bin_basename.replace_extension(executable_extension());
+	}
+
 	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
-	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(executable_extension());
+	bin_outpath := fs::absolute(".cache/cpp2/bin") / bin_basename;
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
 	ensure_dir(log_path.parent_path());
@@ -468,15 +482,24 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 }
 
 
-cpp2b_detail_build_impl: type = {
+cpp2b_detail_build_impl: @struct type = {
+	public bins: *std::vector<cpp2b_source_binary_info>;
 }
 cpp2b_detail_build_binary_name: (
 	copy impl: *cpp2b_detail_build_impl,
 	copy p: std::filesystem::path,
 	copy new_binary_name: std::string_view,
-) -> void = {
-	std::println("cpp2b_detail_build_binary_name CALLED!");
-	std::println("{} wants to be renamed to {}", p.string(), new_binary_name);
+) = {
+	bin := std::ranges::find_if(
+		impl*.bins*,
+		:(bin) fs::absolute(bin.src).replace_extension("") == fs::absolute(p$).replace_extension(""),
+	);
+	if bin == impl*.bins*..end() {
+		log_warning("cannot name unknown binary target {}", p.generic_string());
+		return;
+	}
+
+	bin*.preferred_name = new_binary_name;
 }
 
 cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
@@ -708,7 +731,7 @@ subcommands: type = {
 
 			build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
 
-			b: cpp2b_detail_build_impl = ();
+			b: cpp2b_detail_build_impl = (bins&);
 			build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
 		}
 
@@ -776,6 +799,7 @@ cpp2b_source_module_info: @struct type = {
 cpp2b_source_binary_info: @struct type = {
 	src: fs::path;
 	imports: std::vector<std::string>;
+	preferred_name: std::optional<std::string>;
 }
 
 cpp2b_source_build_info: @struct type = {
