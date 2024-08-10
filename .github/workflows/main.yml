@@ -1,0 +1,26 @@
+name: main
+
+on:
+  pull_request:
+
+jobs:
+  typos-check:
+    name: Typos Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@cfe759ac8dd421e203cc293a373396fbc6fe0d4b # v1.22.7
+
+  formatting-check:
+    name: Formatting Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: greut/eclint-action@v0
+
+  build-script-windows:
+    name: 'build.cmd'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: .\build.cmd
