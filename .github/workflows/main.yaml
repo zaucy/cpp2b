@@ -60,14 +60,14 @@ jobs:
           mkdir build
           CC=clang-18 CXX=clang++-18 cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"
           ninja -C build
-        - uses: actions/checkout@v4
-        - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build CC=clang-18 ./build.sh
-        - uses: actions/upload-artifact@v4
-          with:
-            name: cpp2b
-            path: dist/debug/cpp2b
-            if-no-files-found: error
-            retention-days: 0
+      - uses: actions/checkout@v4
+      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build CC=clang-18 ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp2b
+          path: dist/debug/cpp2b
+          if-no-files-found: error
+          retention-days: 0
 
   build-self-linux:
     name: 'build self (linux)'
