@@ -51,7 +51,7 @@ jobs:
         id: libcxx_with_modules
         with:
           path: /tmp/llvm-project/build
-          key: libcxx-${{ env.LLVM_VERSION }}
+          key: 'libcxx-${{ env.LLVM_VERSION }}'
       - name: compiling libcxx ${{ env.LLVM_VERSION }} with modules
         if: steps.libcxx_with_modules.outputs.cache-hit != 'true'
         run: |
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: /tmp/llvm-project/build
-          key: libcxx-${{ env.LLVM_VERSION }}
+          key: 'libcxx-${{ env.LLVM_VERSION }}'
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
