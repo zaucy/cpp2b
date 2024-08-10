@@ -16,8 +16,10 @@ mkdir -p $ROOT_DIR/.cache/repos
 mkdir -p $MODULES_DIR
 mkdir -p $ROOT_DIR/.cache/tools
 mkdir -p $ROOT_DIR/dist/debug
+mkdir -p $ROOT_DIR/.cache/cpp2/source/src
+mkdir -p $ROOT_DIR/.cache/cpp2/source/_build
 
-CPP2B_COMPILER=clang-18
+CPP2B_COMPILER=${CC:=clang}
 
 function log_info() {
   echo "INFO: $1"
@@ -34,6 +36,16 @@ function fatal() {
 
 if ! [ -x "$(command -v $CPP2B_COMPILER)" ]; then
   fatal "cannot find $CPP2B_COMPILER in your PATH"
+fi
+
+if ! [[ $CPP2B_COMPILER == *"clang"* ]]; then
+	fatal "only clang is supported: detected $CPP2B_COMPILER"
+fi
+
+COMPILER_VERSION=$($CPP2B_COMPILER --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+COMPILER_MAJOR_VERSION=$(echo $COMPILER_VERSION | cut -d. -f1)
+if [ "$COMPILER_MAJOR_VERSION" -lt 18 ]; then
+    fatal "clang version 18 or newer only supported: detected $COMPILER_VERSION"
 fi
 
 if [[ -z "${CPP2B_LIBCXX_BUILD_ROOT}" ]]; then
@@ -94,6 +106,8 @@ if ! [ -f $MODULES_DIR/std.pcm ]; then
   $CPP2B_COMPILER                        \
     -stdlib=libc++                       \
     -std=c++23                           \
+    -fexperimental-library               \
+    -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
     -Wno-reserved-module-identifier      \
     std.cppm                             \
     --precompile -o $MODULES_DIR/std.pcm
@@ -101,18 +115,78 @@ if ! [ -f $MODULES_DIR/std.pcm ]; then
   cd $ROOT_DIR
 fi
 
+if ! [ -f $MODULES_DIR/std.compat.pcm ]; then
+  cd $LIBCXX_MODULES_DIR/c++/v1
+  log_info "compiling std.compat module..."
+
+  $CPP2B_COMPILER                        \
+    -stdlib=libc++                       \
+    -std=c++23                           \
+    -fexperimental-library               \
+    -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+    -Wno-reserved-module-identifier      \
+    -fprebuilt-module-path=$MODULES_DIR  \
+    std.compat.cppm                      \
+    --precompile -o $MODULES_DIR/std.compat.pcm
+
+  cd $ROOT_DIR
+fi
+
+if ! [ -f $MODULES_DIR/dylib.pcm ]; then
+  cd $LIBCXX_MODULES_DIR/c++/v1
+  log_info "compiling dylib module..."
+
+  $CPP2B_COMPILER                        \
+    -stdlib=libc++                       \
+    -std=c++23                           \
+    -fexperimental-library               \
+    -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+    -fprebuilt-module-path=$MODULES_DIR  \
+    "$ROOT_DIR/src/dylib.cppm"           \
+    --precompile -o $MODULES_DIR/dylib.pcm
+
+  cd $ROOT_DIR
+fi
+
+log_info "compiling cpp2b module..."
+if [ -f "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm" ]; then
+	rm "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
+fi
+
+cat "$ROOT_DIR/share/cpp2b.cppm.tpl" | sed "s\`@CPP2B_PROJECT_ROOT@\`$ROOT_DIR\`g" > "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
+
+$CPP2B_COMPILER                                     \
+  -stdlib=libc++                                    \
+  -std=c++23                                        \
+  -fexperimental-library                            \
+  -isystem $LIBCXX_INCLUDE_DIR/c++/v1               \
+  -fprebuilt-module-path=$MODULES_DIR               \
+  "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"  \
+  --precompile -o $MODULES_DIR/cpp2b.pcm
+
 log_info "running cppfront..."
-$CPPFRONT src/main.cpp2 -pure -import-std -l -format-colon-errors
+$CPPFRONT src/main.cpp2 -pure -import-std -l -format-colon-errors -o "$ROOT_DIR/.cache/cpp2/source/src/main.cpp"
 
 log_info "compiling..."
-$CPP2B_COMPILER                       \
-  -stdlib=libc++                      \
-  src/main.cpp                        \
-  -std=c++23                          \
-  -fprebuilt-module-path=$MODULES_DIR \
-  -L$LIBCXX_LIB_DIR                   \
-  -lc++                               \
-  -I"$CPPFRONT_INCLUDE_DIR"           \
+$CPP2B_COMPILER                                 \
+  -stdlib=libc++                                \
+  "$MODULES_DIR/cpp2b.pcm"                      \
+  "$MODULES_DIR/dylib.pcm"                      \
+  "$MODULES_DIR/std.compat.pcm"                 \
+  "$ROOT_DIR/.cache/cpp2/source/src/main.cpp"   \
+  -std=c++23                                    \
+  -fexperimental-library                        \
+  -Wno-unused-result                            \
+  -Wno-deprecated-declarations                  \
+  -fprebuilt-module-path=$MODULES_DIR           \
+  -L$LIBCXX_LIB_DIR                             \
+  -isystem $LIBCXX_INCLUDE_DIR/c++/v1           \
+  -lc++abi                                      \
+  -lc++                                         \
+  -lm                                           \
+  -static                                       \
+  -fuse-ld=lld                                  \
+  -I"$CPPFRONT_INCLUDE_DIR"                     \
   -o $CPP2B_DIST
 
 log_info "successfully built $CPP2B_DIST"

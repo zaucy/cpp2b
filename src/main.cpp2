@@ -259,7 +259,14 @@ run_with_msvc_env_vars: (args) -> int = {
 main: (args) -> int = {
 	using std::views::drop;
 
-	argz: std::vector<std::string_view> = (args.begin(), args.end());
+	argz: std::vector<std::string_view> = ();
+
+	// NOTE: this doesn't work on clang 18 with licxx for some reason
+	// argz: std::vector<std::string_view> = (args.begin(), args.end());
+	argz.reserve(args.size());
+	for args do(arg: std::string_view) {
+		argz.emplace_back(arg);
+	}
 
 	if constexpr cpp2b::compiler() == cpp2b::compiler_type::msvc {
 		if !has_msvc_env_vars() {
