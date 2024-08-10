@@ -57,7 +57,7 @@ fi
 log_info "using libcxx build root $CPP2B_LIBCXX_BUILD_ROOT"
 
 if ! [ -d $CPP2B_LIBCXX_BUILD_ROOT ]; then
-  log_fatal "directory $CPP2B_LIBCXX_BUILD_ROOT does not exixt"
+  log_fatal "directory $CPP2B_LIBCXX_BUILD_ROOT does not exist"
 fi
 
 function ensure_gh_repo() {
