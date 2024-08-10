@@ -3,6 +3,11 @@ name: main
 on:
   pull_request:
 
+env:
+  # libcxx version to match whats already installed
+  # https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
+  LLVM_VERSION: '18.1.3'
+
 jobs:
   typos-check:
     name: Typos Check
@@ -40,12 +45,41 @@ jobs:
     name: 'build.sh'
     runs-on: ubuntu-24.04
     steps:
+      - run: sudo apt-get install libclang-dev ninja-build -y
+      - uses: actions/cache@v4
+        id: libcxx_with_modules
+        with:
+          path: /tmp/llvm-project/build
+          key: libcxx-${{ env.LLVM_VERSION }}
+      - name: compiling libcxx ${{ env.LLVM_VERSION }} with modules
+        if: steps.libcxx_with_modules.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch llvmorg-${{ env.LLVM_VERSION }} https://github.com/llvm/llvm-project.git /tmp/llvm-project
+          cd /tmp/llvm-project
+          mkdir build
+          CC=clang-18 CXX=clang++-18 cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"
+          ninja -C build
+        - uses: actions/checkout@v4
+        - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build CC=clang-18 ./build.sh
+        - uses: actions/upload-artifact@v4
+          with:
+            name: cpp2b
+            path: dist/debug/cpp2b
+            if-no-files-found: error
+            retention-days: 0
+
+  build-self-linux:
+    name: 'build self (linux)'
+    needs: build-script-linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/llvm-project/build
+          key: libcxx-${{ env.LLVM_VERSION }}
       - uses: actions/checkout@v4
-      - run: CC=clang-18 ./build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: cpp2b
-          path: dist/debug/cpp2b
-          if-no-files-found: error
-          retention-days: 0
-
+      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./cpp2b build
+      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./.cache/cpp2/bin/cpp2b build
