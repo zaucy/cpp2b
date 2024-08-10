@@ -41,4 +41,5 @@ jobs:
         with:
           name: 'cpp2b.exe'
       - run: .\cpp2b.exe build
+      - run: .\cache\cpp2\bin\cpp2b.exe build
 
