@@ -34,5 +34,18 @@ jobs:
         with:
           name: 'cpp2b.exe'
       - run: .\cpp2b.exe build
-      - run: .\cache\cpp2\bin\cpp2b.exe build
+      - run: .\.cache\cpp2\bin\cpp2b.exe build
+
+  build-script-linux:
+    name: 'build.sh'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: CC=clang-18 ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp2b
+          path: dist/debug/cpp2b
+          if-no-files-found: error
+          retention-days: 0
 
