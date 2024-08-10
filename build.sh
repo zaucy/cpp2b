@@ -112,7 +112,7 @@ if ! [ -f $MODULES_DIR/std.pcm ]; then
         std.cppm                             \
         --precompile -o $MODULES_DIR/std.pcm
 
-      cd $ROOT_DIR
+    cd $ROOT_DIR
 fi
 
 if ! [ -f $MODULES_DIR/std.compat.pcm ]; then
@@ -129,7 +129,7 @@ if ! [ -f $MODULES_DIR/std.compat.pcm ]; then
     std.compat.cppm                      \
     --precompile -o $MODULES_DIR/std.compat.pcm
 
-  cd $ROOT_DIR
+    cd $ROOT_DIR
 fi
 
 if ! [ -f $MODULES_DIR/dylib.pcm ]; then
