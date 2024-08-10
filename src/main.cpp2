@@ -182,8 +182,7 @@ get_libcxx_build_root: () -> fs::path = {
 	return getenv_sv("CPP2B_LIBCXX_BUILD_ROOT").expect("missing 'CPP2B_LIBCXX_BUILD_ROOT' environment variable");
 }
 
-get_system_modules_dir: () -> fs::path = {
-	compiler :== cpp2b::compiler();
+get_system_modules_dir: (compiler: cpp2b::compiler_type) -> fs::path = {
 	if compiler == cpp2b::compiler_type::msvc  { return get_vs_tools_dir() / "modules"; }
 	if compiler == cpp2b::compiler_type::clang { return get_libcxx_build_root() / "modules"; }
 	log_error("cannot find system cpp20 modules directory");
@@ -197,7 +196,7 @@ ensure_system_module: (name: std::string) = {
 ensure_system_module: (name: std::string, deps) = {
 	d := modules_dir();
 	bmi := d / std::format("{}{}", name, bmi_extension(cpp2b::compiler()));
-	system_modules_dir := get_system_modules_dir();
+	system_modules_dir := get_system_modules_dir(cpp2b::compiler());
 
 	if !fs::exists(bmi) {
 		build_cpp1_module(
@@ -214,6 +213,11 @@ ensure_std_modules: () = {
 }
 
 build_cpp1_module: (name: std::string, sources, module_deps) = {
+	if cpp2b::compiler() != cpp2b::compiler_type::msvc {
+		log_error("TODO: build_cpp1_module non-msvc support");
+		std::abort();
+	}
+
 	d := fs::absolute(modules_dir());
 	bmi := d / ("(name)$.ifc");
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP";
@@ -496,6 +500,11 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
 
+	if cpp2b::compiler() != cpp2b::compiler_type::msvc {
+		log_error("TODO: build_binary non-msvc support");
+		std::abort();
+	}
+
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
 	for info.imports do (imp: std::string) {
@@ -547,6 +556,11 @@ build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
 	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
+
+	if cpp2b::compiler() != cpp2b::compiler_type::msvc {
+		log_error("TODO: build_build_script non-msvc support");
+		std::abort();
+	}
 
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL";
