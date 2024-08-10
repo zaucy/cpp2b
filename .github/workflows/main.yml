@@ -24,3 +24,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: .\build.cmd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp2b.exe
+          path: dist/debug/cpp2b.exe
+          if-no-files-found: error
+          retention-days: 0
+
+  build-self-windows:
+    name: 'build self (windows)'
+    needs: build-script-windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: 'cpp2b.exe'
+      - run: .\cpp2b.exe build
+
