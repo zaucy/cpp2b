@@ -103,6 +103,13 @@ module_source_extension: (compiler: cpp2b::compiler_type) -> std::string_view = 
 	std::abort();
 }
 
+bmi_extension: (compiler: cpp2b::compiler_type) -> std::string_view = {
+	if compiler == cpp2b::compiler_type::msvc  { return ".ifc"; }
+	if compiler == cpp2b::compiler_type::clang { return ".pcm"; }
+	if compiler == cpp2b::compiler_type::gcc   { return ".pcm"; } // TODO: Is this right?
+	std::abort();
+}
+
 generate_cpp2b_module: () = {
 	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.cppm.tpl";
 	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
@@ -171,19 +178,39 @@ get_vs_tools_dir: () -> fs::path = {
 	return getenv_sv("VCToolsInstallDir").expect("missing 'VCToolsInstallDir' environment variable");
 }
 
-ensure_std_modules: () = {
+get_libcxx_build_root: () -> fs::path = {
+	return getenv_sv("CPP2B_LIBCXX_BUILD_ROOT").expect("missing 'CPP2B_LIBCXX_BUILD_ROOT' environment variable");
+}
+
+get_system_modules_dir: () -> fs::path = {
+	compiler :== cpp2b::compiler();
+	if compiler == cpp2b::compiler_type::msvc  { return get_vs_tools_dir() / "modules"; }
+	if compiler == cpp2b::compiler_type::clang { return get_libcxx_build_root() / "modules"; }
+	log_error("cannot find system cpp20 modules directory");
+	std::abort();
+}
+
+ensure_system_module: (name: std::string) = {
+	ensure_system_module(name, :std::vector<std::string> = ());
+}
+
+ensure_system_module: (name: std::string, deps) = {
 	d := modules_dir();
-	std_bmi: fs::path = d / "std.ifc";
-	std_compat_bmi: fs::path = d / "std.compat.ifc";
-	vs_tools_dir := get_vs_tools_dir();
+	bmi := d / std::format("{}{}", name, bmi_extension(cpp2b::compiler()));
+	system_modules_dir := get_system_modules_dir();
 
-	if !fs::exists(std_bmi) {
-		build_cpp1_module("std", :std::vector=(vs_tools_dir / "modules" / "std.ixx"), :std::vector<std::string> = ());
+	if !fs::exists(bmi) {
+		build_cpp1_module(
+			name,
+			:std::vector=(system_modules_dir / std::format("{}{}", name, module_source_extension(cpp2b::compiler()))),
+			deps
+		);
 	}
+}
 
-	if !fs::exists(std_compat_bmi) {
-		build_cpp1_module("std.compat", :std::vector=(vs_tools_dir / "modules" / "std.compat.ixx"), :std::vector=("std"));
-	}
+ensure_std_modules: () = {
+	ensure_system_module("std");
+	ensure_system_module("std.compat", :std::vector=("std"));
 }
 
 build_cpp1_module: (name: std::string, sources, module_deps) = {
