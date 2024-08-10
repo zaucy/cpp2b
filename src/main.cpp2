@@ -190,7 +190,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	d := fs::absolute(modules_dir());
 	bmi := d / ("(name)$.ifc");
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP";
-	log_path := fs::path(".cache") / "cpp2" / "log" / "build" / "(name)$.log";
+	log_path := fs::path(".cache") / "cpp2" / "log" / "build" / ("(name)$.log");
 
 	fs::remove(bmi);
 	ensure_dir(log_path.parent_path());
@@ -327,11 +327,11 @@ cmd_log_output: (log_file_path: fs::path) -> std::string = {
 }
 
 transpile_cpp2_result: @struct type = {
-	src: fs::path;
-	cpp1_output: fs::path;
-	output_log: fs::path;
-	cppfront_exit_code: int;
-	duration: std::chrono::milliseconds;
+	src: fs::path = ();
+	cpp1_output: fs::path = ();
+	output_log: fs::path = ();
+	cppfront_exit_code: int = ();
+	duration: std::chrono::milliseconds = ();
 }
 
 measure: (move fn, out duration: std::chrono::milliseconds) -> _ = {
@@ -350,7 +350,7 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	ensure_dir(result.output_log.parent_path());
 
 	cppfront := fs::absolute(".cache/cpp2/tools/cppfront(executable_extension())$");
-	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (result.cpp1_output.string())$ -pure -import-std -add-source-info -format-colon-errors (cmd_log_output(result.output_log))$";
+	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (result.cpp1_output.string())$ -pure -import-std -l -format-colon-errors (cmd_log_output(result.output_log))$";
 	ensure_dir(result.cpp1_output.parent_path());
 
 	result.cppfront_exit_code = measure(
@@ -435,10 +435,10 @@ find_root_dir: (dir: fs::path) -> std::optional<fs::path> = {
 }
 
 build_binary_result: @struct type = {
-	outpath: fs::path;
-	exit_code: int;
-	log_path: fs::path;
-	duration: std::chrono::milliseconds;
+	outpath: fs::path = ();
+	exit_code: int = ();
+	log_path: fs::path = ();
+	duration: std::chrono::milliseconds = ();
 }
 build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	bin_basename: fs::path;
@@ -788,23 +788,23 @@ subcommands: type = {
 }
 
 cpp2b_source_module_info: @struct type = {
-	exported: bool;
-	imports: std::vector<std::string>;
-	name: std::string;
-	partition: std::optional<std::string>;
+	exported: bool = ();
+	imports: std::vector<std::string> = ();
+	name: std::string = ();
+	partition: std::optional<std::string> = ();
 
 	is_primary: (this) -> bool = !partition.has_value();
 }
 
 cpp2b_source_binary_info: @struct type = {
-	src: fs::path;
-	imports: std::vector<std::string>;
-	preferred_name: std::optional<std::string>;
+	src: fs::path = ();
+	imports: std::vector<std::string> = ();
+	preferred_name: std::optional<std::string> = ();
 }
 
 cpp2b_source_build_info: @struct type = {
-	src: fs::path;
-	imports: std::vector<std::string>;
+	src: fs::path = ();
+	imports: std::vector<std::string> = ();
 }
 
 cpp2b_source_unknown_info: @struct type = {

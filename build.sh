@@ -102,7 +102,7 @@ if ! [ -f $MODULES_DIR/std.pcm ]; then
 fi
 
 log_info "running cppfront..."
-$CPPFRONT src/main.cpp2 -pure -import-std -add-source-info -format-colon-errors
+$CPPFRONT src/main.cpp2 -pure -import-std -l -format-colon-errors
 
 log_info "compiling..."
 $CPP2B_COMPILER                       \
