@@ -39,7 +39,8 @@ jobs:
         with:
           name: 'cpp2b.exe'
       - run: .\cpp2b.exe build
-      - run: .\.cache\cpp2\bin\cpp2b.exe build
+      - run: Copy-Item .\.cache\cpp2\bin\cpp2b.exe -Destination .\cpp2b-self.exe
+      - run: .\cpp2b-self.exe build
 
   build-script-linux:
     name: 'build.sh'
