@@ -82,5 +82,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: cpp2b
+      - run: chmod +x cpp2b
       - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./cpp2b build
       - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./.cache/cpp2/bin/cpp2b build
