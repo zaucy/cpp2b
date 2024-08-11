@@ -25,7 +25,7 @@ jobs:
       - run: .\build.cmd
       - uses: actions/upload-artifact@v4
         with:
-          name: cpp2b.exe
+          name: cpp2b-windows-latest
           path: dist/debug/cpp2b.exe
           if-no-files-found: error
           retention-days: 0
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: 'cpp2b.exe'
+          name: cpp2b-windows-latest
       - run: .\cpp2b.exe build
       - run: Copy-Item .\.cache\cpp2\bin\cpp2b.exe -Destination .\cpp2b-self.exe
       - run: .\cpp2b-self.exe build
@@ -65,7 +65,7 @@ jobs:
       - run: CC=clang-18 ./build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: cpp2b
+          name: cpp2b-ubuntu-24.04
           path: dist/debug/cpp2b
           if-no-files-found: error
           retention-days: 0
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: cpp2b
+          name: cpp2b-ubuntu-24.04
       - run: chmod +x cpp2b
       - run: ./cpp2b build
       - run: ./.cache/cpp2/bin/cpp2b build
@@ -92,6 +92,7 @@ jobs:
     needs: [build-script-windows, build-script-linux]
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         example:
           - init
