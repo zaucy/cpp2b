@@ -100,16 +100,16 @@ jobs:
           - windows-latest
           - ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        id: cpp2b-binary
-        with:
-          name: 'cpp2b-${{ matrix.os }}'
       - uses: actions/cache/restore@v4
         if: "!contains(matrix.os, 'windows')"
         with:
           path: /tmp/llvm-project/build
           key: 'libcxx-${{ env.LLVM_VERSION }}'
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        id: cpp2b-binary
+        with:
+          name: 'cpp2b-${{ matrix.os }}'
       - run: 'chmod +x ./cpp2b && ./cpp2b build'
         if: "!contains(matrix.os, 'windows')"
         working-directory: "examples/${{ matrix.example }}"
