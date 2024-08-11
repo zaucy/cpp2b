@@ -7,6 +7,7 @@ env:
   # libcxx version to match whats already installed
   # https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
   LLVM_VERSION: '18.1.3'
+  CPP2B_LIBCXX_BUILD_ROOT: '/tmp/llvm-project/build'
 
 jobs:
   typos-check:
@@ -24,7 +25,7 @@ jobs:
       - run: .\build.cmd
       - uses: actions/upload-artifact@v4
         with:
-          name: cpp2b.exe
+          name: cpp2b-windows-latest
           path: dist/debug/cpp2b.exe
           if-no-files-found: error
           retention-days: 0
@@ -37,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: 'cpp2b.exe'
+          name: cpp2b-windows-latest
       - run: .\cpp2b.exe build
       - run: Copy-Item .\.cache\cpp2\bin\cpp2b.exe -Destination .\cpp2b-self.exe
       - run: .\cpp2b-self.exe build
@@ -61,10 +62,10 @@ jobs:
           CC=clang-18 CXX=clang++-18 cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"
           ninja -C build
       - uses: actions/checkout@v4
-      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build CC=clang-18 ./build.sh
+      - run: CC=clang-18 ./build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: cpp2b
+          name: cpp2b-ubuntu-24.04
           path: dist/debug/cpp2b
           if-no-files-found: error
           retention-days: 0
@@ -81,7 +82,37 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: cpp2b
+          name: cpp2b-ubuntu-24.04
       - run: chmod +x cpp2b
-      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./cpp2b build
-      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./.cache/cpp2/bin/cpp2b build
+      - run: ./cpp2b build
+      - run: ./.cache/cpp2/bin/cpp2b build
+
+  build-examples:
+    name: build examples
+    needs: [build-script-windows, build-script-linux]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - init
+        os:
+          - windows-latest
+          - ubuntu-24.04
+    steps:
+      - uses: actions/cache/restore@v4
+        if: "!contains(matrix.os, 'windows')"
+        with:
+          path: /tmp/llvm-project/build
+          key: 'libcxx-${{ env.LLVM_VERSION }}'
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        id: cpp2b-binary
+        with:
+          name: 'cpp2b-${{ matrix.os }}'
+      - run: 'chmod +x ../../cpp2b && ../../cpp2b build'
+        if: "!contains(matrix.os, 'windows')"
+        working-directory: "examples/${{ matrix.example }}"
+      - run: ..\..\cpp2b.exe build
+        if: "contains(matrix.os, 'windows')"
+        working-directory: 'examples/${{ matrix.example }}'

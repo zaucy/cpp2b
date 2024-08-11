@@ -16,6 +16,10 @@ log_info: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Arg
 	std::println("\033[0;36mINFO\033[0m: {}", std::format(fmt, args...));
 }
 
+log_success: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Args) = {
+	std::println("\033[0;32mSUCCESS\033[0m: {}", std::format(fmt, args...));
+}
+
 ensure_dir: (dir: fs::path) = {
 	status := fs::status(dir);
 
@@ -358,6 +362,7 @@ main: (args) -> int = {
 			return inspect arg -> int {
 				is "build" = subcommands::build(remaining_args);
 				is "clean" = subcommands::clean(remaining_args);
+				is "init"  = subcommands::init(remaining_args);
 				is "run"   = subcommands::run(remaining_args);
 				is _       = subcommands::unknown(arg);
 			};
@@ -496,16 +501,21 @@ warn_if_error: (context, p: fs::path, ec: std::error_code) -> void = {
 	}
 }
 
+
 find_root_dir: (dir: fs::path) -> std::optional<fs::path> = {
+	return find_root_dir(dir, "build.cpp2");
+}
+
+find_root_dir: (dir: fs::path, filename) -> std::optional<fs::path> = {
 	if dir.empty() { return std::nullopt; }
 
-	if fs::exists(dir / "build.cpp2") {
+	if fs::exists(dir / filename) {
 		return dir;
 	}
 
 	if !dir.has_parent_path() { return std::nullopt; }
 
-	return find_root_dir(dir.parent_path());
+	return find_root_dir(dir.parent_path(), filename);
 }
 
 build_binary_result: @struct type = {
@@ -763,6 +773,15 @@ subcommands: type = {
 						continue src_loop;
 					}
 				}
+
+				if rel_path.has_parent_path() {
+					src_root_dir := find_root_dir(rel_path.parent_path());
+					if src_root_dir && src_root_dir* != root_dir* {
+						log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
+						continue src_loop;
+					}
+				}
+
 				cpp2_source_files.emplace_back(rel_path);
 			} else if p.extension() == ".cppm" {
 				rel_path := fs::relative(p, fs::current_path());
@@ -771,6 +790,15 @@ subcommands: type = {
 						continue src_loop;
 					}
 				}
+
+				if rel_path.has_parent_path() {
+					src_root_dir := find_root_dir(rel_path.parent_path());
+					if src_root_dir && src_root_dir* != root_dir* {
+						log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
+						continue src_loop;
+					}
+				}
+
 				cpp1_module_source_files.emplace_back(rel_path);
 			}
 		}
@@ -905,7 +933,7 @@ subcommands: type = {
 				return build_result.exit_code;
 			}
 
-			log_info("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
+			log_success("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
 		}
 
 		return 0;
@@ -923,6 +951,55 @@ subcommands: type = {
 		for args do (arg) {
 			std::println("arg is {}", arg);
 		}
+		return 0;
+	}
+
+	init: (args) -> int = {
+		if fs::exists("build.cpp2") {
+			log_error("already initialized cpp2b project!");
+			return 1;
+		}
+
+		dirname := fs::current_path().filename().string();
+
+		ensure_dir("src");
+
+		main_cpp2: std::ofstream = ("src/main.cpp2", std::ios::binary);
+		main_cpp2 << "main: () = std::println(\"Hello, (dirname)$!\");\n";
+
+		build_cpp2: std::ofstream = ("build.cpp2", std::ios::binary);
+		build_cpp2 << "import cpp2b.build;\n\n";
+		build_cpp2 << "build: (inout b: cpp2b::build) -> void = {\n";
+		build_cpp2 << "\t// rename binary so instead of it being 'src/main' it will be '(dirname)$'\n";
+		build_cpp2 << "\tb.binary_name(\"src/main\", \"(dirname)$\");\n";
+		build_cpp2 << "}\n";
+		
+		main_cpp2.flush();
+		main_cpp2.close();
+		build_cpp2.flush();
+		build_cpp2.close();
+
+		log_info("added build.cpp2");
+		log_info("added src/main.cpp2");
+
+		if !fs::exists(".gitignore") {
+			if !find_root_dir(fs::current_path(), ".git") {
+				log_warning("assuming git repository");
+			}
+
+			gitignore: std::ofstream = (".gitignore", std::ios::binary);
+			gitignore << "# cpp2b cache directory\n";
+			gitignore << ".cache/cpp2\n";
+
+			gitignore.flush();
+			gitignore.close();
+
+			log_info("added .gitignore");
+		}
+
+		log_success("initialized cpp2b project '{}'", dirname);
+		log_info("run `cpp2b build` to build your project");
+
 		return 0;
 	}
 
