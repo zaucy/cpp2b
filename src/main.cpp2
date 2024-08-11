@@ -497,7 +497,47 @@ build_binary_result: @struct type = {
 	log_path: fs::path = ();
 	duration: std::chrono::milliseconds = ();
 }
+
+cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> std::string = {
+	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
+	d := fs::absolute(modules_dir());
+	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
+	for info.imports do (imp: std::string) {
+		imp_bmi := d / ("(imp)$.ifc");
+		imp_obj := d / ("(imp)$.obj");
+		cmd_str += " /reference \"(imp_bmi.string())$\" \"(imp_obj.string())$\"";
+	}
+	cmd_str += " \"(transpiled_src.string())$\"";
+	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
+	cmd_str += " /Fe\"(bin_outpath.string())$\"";
+	return cmd_str;
+}
+
+unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_info, bin_outpath: fs::path) -> std::string = {
+	libcxx_inc_dir := get_libcxx_build_root() / "include" / "c++" / "v1";
+	libcxx_lib_dir := get_libcxx_build_root() / "lib";
+	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
+	d := fs::absolute(modules_dir());
+	cmd_str: std::string = std::format("{} -stdlib=libc++ -fPIC", compiler_cmd);
+	for info.imports do (imp: std::string) {
+		cmd_str += " \"" + (d / ("(imp)$.pcm")).string() + "\"";
+	}
+	cmd_str += " \"(transpiled_src.string())$\"";
+	cmd_str += " -std=c++23 -fexperimental-library";
+	cmd_str += std::format(" -fprebuilt-module-path={}", d.string());
+	cmd_str += std::format(" -L{}", libcxx_lib_dir.string());
+	cmd_str += std::format(" -isystem {}", libcxx_inc_dir.string());
+	cmd_str += " -lc++abi -lc++ -lm -static -fuse-ld=lld";
+	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
+	cmd_str += " -o \"(bin_outpath.string())$\"";
+	return cmd_str;
+}
+
+
 build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
+	compiler :== cpp2b::compiler();
 	bin_basename: fs::path;
 	if info.preferred_name {
 		bin_basename = fs::path(info.preferred_name*);
@@ -512,28 +552,19 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 		bin_basename.replace_extension(executable_extension());
 	}
 
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / bin_basename;
-	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
 	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
 
-	if cpp2b::compiler() != cpp2b::compiler_type::msvc {
-		log_error("TODO: build_binary non-msvc support");
-		std::abort();
-	}
-
 	d := fs::absolute(modules_dir());
-	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
-	for info.imports do (imp: std::string) {
-		imp_bmi := d / ("(imp)$.ifc");
-		imp_obj := d / ("(imp)$.obj");
-		cmd_str += " /reference \"(imp_bmi.string())$\" \"(imp_obj.string())$\"";
-	}
-	cmd_str += " \"(transpiled_src .string())$\"";
-	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
-	cmd_str += " /Fe\"(bin_outpath.string())$\"";
+
+	cmd_str: std::string = "";
+	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_binary_cmd(info, bin_outpath); }
+	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_binary_cmd("clang", info, bin_outpath); }
+	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_binary_cmd("gcc", info, bin_outpath); }
+	else { log_error("Unsupported compiler"); std::abort(); }
+
 	cmd_str += " (cmd_log_output(fs::absolute(log_path)))$";
 
 	result: build_binary_result = ();
@@ -568,19 +599,9 @@ cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
 	// empty. this is just so we can decltype the signature
 }
 
-build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
+cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path) -> std::string = {
 	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
-	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
-	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
-	ensure_dir(log_path.parent_path());
-	ensure_dir(bin_outpath.parent_path());
-
-	if cpp2b::compiler() != cpp2b::compiler_type::msvc {
-		log_error("TODO: build_build_script non-msvc support");
-		std::abort();
-	}
-
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL";
 	for info.imports do (imp: std::string) {
@@ -592,6 +613,46 @@ build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(fs::relative(bin_outpath).string())$\"";
 	cmd_str += " /link";
+	return cmd_str;
+}
+
+
+unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_build_info, bin_outpath: fs::path) -> std::string = {
+	libcxx_inc_dir := get_libcxx_build_root() / "include" / "c++" / "v1";
+	libcxx_lib_dir := get_libcxx_build_root() / "lib";
+	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
+	d := fs::absolute(modules_dir());
+	cmd_str: std::string = std::format("{} -stdlib=libc++ -shared", compiler_cmd);
+	for info.imports do (imp: std::string) {
+		cmd_str += " \"" + (d / ("(imp)$.pcm")).string() + "\"";
+	}
+	cmd_str += " \"(transpiled_src.string())$\"";
+	cmd_str += " -std=c++23 -fexperimental-library -fPIC";
+	cmd_str += std::format(" -fprebuilt-module-path={}", d.string());
+	cmd_str += std::format(" -L{}", libcxx_lib_dir.string());
+	cmd_str += std::format(" -isystem {}", libcxx_inc_dir.string());
+	cmd_str += " -lc++abi -lc++ -lm -fuse-ld=lld";
+	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
+	cmd_str += " -o \"(bin_outpath.string())$\"";
+	return cmd_str;
+}
+
+
+build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
+	compiler :== cpp2b::compiler();
+	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
+	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
+	ensure_dir(log_path.parent_path());
+	ensure_dir(bin_outpath.parent_path());
+
+	d := fs::absolute(modules_dir());
+	cmd_str: std::string = "";
+	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_build_script_cmd(info, bin_outpath); }
+	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_build_script_cmd("clang", info, bin_outpath); }
+	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_build_script_cmd("gcc", info, bin_outpath); }
+	else { log_error("Unsupported compiler"); std::abort(); }
+
 	cmd_str += " (cmd_log_output(fs::relative(log_path)))$";
 
 	result: build_binary_result = ();

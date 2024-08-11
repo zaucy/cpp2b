@@ -3,7 +3,7 @@ module;
 #if defined(_WIN32)
 #  define CPP2B_BUILD_API extern "C" __declspec(dllexport)
 #else
-#  define CPP2B_BUILD_API __attribute__((visibility("default")))
+#  define CPP2B_BUILD_API extern "C" __attribute__((visibility("default")))
 #endif
 
 export module cpp2b.build;
