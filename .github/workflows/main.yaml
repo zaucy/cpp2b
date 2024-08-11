@@ -110,9 +110,9 @@ jobs:
         id: cpp2b-binary
         with:
           name: 'cpp2b-${{ matrix.os }}'
-      - run: 'chmod +x ./cpp2b && ./cpp2b build'
+      - run: 'chmod +x ../../cpp2b && ../../cpp2b build'
         if: "!contains(matrix.os, 'windows')"
         working-directory: "examples/${{ matrix.example }}"
-      - run: .\cpp2b.exe build
+      - run: ..\..\cpp2b.exe build
         if: "contains(matrix.os, 'windows')"
         working-directory: 'examples/${{ matrix.example }}'
