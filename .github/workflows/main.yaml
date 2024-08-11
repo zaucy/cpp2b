@@ -7,6 +7,7 @@ env:
   # libcxx version to match whats already installed
   # https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
   LLVM_VERSION: '18.1.3'
+  CPP2B_LIBCXX_BUILD_ROOT: '/tmp/llvm-project/build'
 
 jobs:
   typos-check:
@@ -61,7 +62,7 @@ jobs:
           CC=clang-18 CXX=clang++-18 cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"
           ninja -C build
       - uses: actions/checkout@v4
-      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build CC=clang-18 ./build.sh
+      - run: CC=clang-18 ./build.sh
       - uses: actions/upload-artifact@v4
         with:
           name: cpp2b
@@ -83,5 +84,30 @@ jobs:
         with:
           name: cpp2b
       - run: chmod +x cpp2b
-      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./cpp2b build
-      - run: CPP2B_LIBCXX_BUILD_ROOT=/tmp/llvm-project/build ./.cache/cpp2/bin/cpp2b build
+      - run: ./cpp2b build
+      - run: ./.cache/cpp2/bin/cpp2b build
+
+  build-examples:
+    name: build examples
+    needs: [build-script-windows, build-script-linux]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        example:
+          - init
+        os:
+          - windows-latest
+          - ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        id: cpp2b-binary
+        with:
+          name: 'cpp2b-${{ matrix.os }}'
+      - uses: actions/cache/restore@v4
+        if: "'${{ matrix.os }}' == 'ubuntu-24.04'"
+        with:
+          path: /tmp/llvm-project/build
+          key: 'libcxx-${{ env.LLVM_VERSION }}'
+      - run: '${{ steps.cpp2b-binary.outputs.download-path }} build'
+        working-directory: "examples/${{ matrix.example }}"

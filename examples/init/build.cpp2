@@ -1,0 +1,6 @@
+import cpp2b.build;
+
+build: (inout b: cpp2b::build) -> void = {
+	// rename binary so instead of it being 'src/main' it will be 'init'
+	b.binary_name("src/main", "init");
+}
