@@ -106,11 +106,13 @@ jobs:
         with:
           name: 'cpp2b-${{ matrix.os }}'
       - uses: actions/cache/restore@v4
-        if: "'${{ matrix.os }}' == 'ubuntu-24.04'"
+        if: "!contains(matrix.os, 'windows')"
         with:
           path: /tmp/llvm-project/build
           key: 'libcxx-${{ env.LLVM_VERSION }}'
-      - run: 'mv ${{ steps.cpp2b-binary.outputs.download-path }}/cpp2b ${{ steps.cpp2b-binary.outputs.download-path }}/cpp2b.exe'
-        if: "'${{ matrix.os }}' == 'ubuntu-24.04'"
-      - run: '${{ steps.cpp2b-binary.outputs.download-path }}/cpp2b.exe build'
+      - run: 'chmod +x ./cpp2b && ./cpp2b build'
+        if: "!contains(matrix.os, 'windows')"
         working-directory: "examples/${{ matrix.example }}"
+      - run: .\cpp2b.exe build
+        if: "contains(matrix.os, 'windows')"
+        working-directory: 'examples/${{ matrix.example }}'
