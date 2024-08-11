@@ -1,6 +1,15 @@
+module;
+
+#ifdef _MSC_VER
+#	include <processenv.h>
+#else
+#	include <stdlib.h>
+#endif
+
 export module cpp2b;
 
 import std;
+import std.compat;
 
 export namespace cpp2b {
 
@@ -48,3 +57,22 @@ constexpr auto install_dir() -> const std::string_view {
 }
 
 } // namespace cpp2b
+
+export namespace cpp2b::env {
+inline auto set_var(const std::string& name, const std::string& value) -> void {
+#if defined(_MSC_VER)
+	SetEnvironmentVariableA(name.c_str(), value.c_str());
+#else
+	setenv(name.c_str(), value.c_str(), 1);
+#endif
+}
+
+inline auto get_var(const std::string& name) -> std::optional<std::string> {
+	auto val = std::getenv(name.c_str());
+	if(val != nullptr) {
+		return std::string{val};
+	}
+
+	return {};
+}
+}

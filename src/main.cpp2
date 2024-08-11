@@ -306,6 +306,15 @@ run_with_msvc_env_vars: (args) -> int = {
 	return std::system(cmd_str.c_str());
 }
 
+run_with_args: (args) -> int = {
+	cmd_str: std::string = "";
+	for args do (arg) {
+		cmd_str += " (arg)$";
+	}
+
+	return std::system(cmd_str.c_str());
+}
+
 main: (args) -> int = {
 	using std::views::drop;
 
@@ -323,6 +332,14 @@ main: (args) -> int = {
 			return run_with_msvc_env_vars(argz);
 		} else {
 			log_info("using vs tools {}", getenv_sv("VCToolsVersion").expect("msvc env internal error"));
+		}
+	} else {
+		libcxx_lib_dir := get_libcxx_build_root() / "lib";
+		ld_library_path := cpp2b::env::get_var("LD_LIBRARY_PATH");
+		if !ld_library_path || !ld_library_path*.contains(libcxx_lib_dir.string()) {
+			log_info("setting LD_LIBRARY_PATH to '{}'", libcxx_lib_dir.string());
+			cpp2b::env::set_var("LD_LIBRARY_PATH", libcxx_lib_dir.string());
+			return run_with_args(argz);
 		}
 	}
 
