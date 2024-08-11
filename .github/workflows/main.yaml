@@ -110,5 +110,7 @@ jobs:
         with:
           path: /tmp/llvm-project/build
           key: 'libcxx-${{ env.LLVM_VERSION }}'
-      - run: '${{ steps.cpp2b-binary.outputs.download-path }} build'
+      - run: 'mv ${{ steps.cpp2b-binary.outputs.download-path }}/cpp2b ${{ steps.cpp2b-binary.outputs.download-path }}/cpp2b.exe'
+        if: "'${{ matrix.os }}' == 'ubuntu-24.04'"
+      - run: '${{ steps.cpp2b-binary.outputs.download-path }}/cpp2b.exe build'
         working-directory: "examples/${{ matrix.example }}"
