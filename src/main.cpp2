@@ -184,7 +184,7 @@ get_libcxx_build_root: () -> fs::path = {
 
 get_system_modules_dir: (compiler: cpp2b::compiler_type) -> fs::path = {
 	if compiler == cpp2b::compiler_type::msvc  { return get_vs_tools_dir() / "modules"; }
-	if compiler == cpp2b::compiler_type::clang { return get_libcxx_build_root() / "modules"; }
+	if compiler == cpp2b::compiler_type::clang { return get_libcxx_build_root() / "modules" / "c++" / "v1"; }
 	log_error("cannot find system cpp20 modules directory");
 	std::abort();
 }
@@ -212,30 +212,49 @@ ensure_std_modules: () = {
 	ensure_system_module("std.compat", :std::vector=("std"));
 }
 
-build_cpp1_module: (name: std::string, sources, module_deps) = {
-	if cpp2b::compiler() != cpp2b::compiler_type::msvc {
-		log_error("TODO: build_cpp1_module non-msvc support");
-		std::abort();
-	}
 
+cl_build_cpp1_module_cmd: (name: std::string, sources, module_deps, bmi_path: fs::path) -> std::string = {
 	d := fs::absolute(modules_dir());
-	bmi := d / ("(name)$.ifc");
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP";
+	for module_deps do (dep: std::string) {
+		dep_bmi := d / ("(dep)$.ifc");
+		cmd_str += " /reference \"(dep_bmi.string())$\"";
+	}
+	for sources do (src: fs::path) {
+		cmd_str += " \"(fs::absolute(src).string())$\"";
+	}
+	cmd_str += " /ifcOutput \"(bmi_path.string())$\"";
+	return cmd_str;
+}
+
+
+unix_build_cpp1_module_cmd: (compiler_cmd: std::string, name: std::string, sources, module_deps, bmi_path: fs::path) -> std::string = {
+	d := fs::absolute(modules_dir());
+	libcxx_inc_dir := get_libcxx_build_root() / "include" / "c++" / "v1";
+	cmd_str: std::string = std::format("{} -stdlib=libc++ -std=c++23 -fexperimental-library", compiler_cmd);
+	cmd_str += std::format(" -isystem \"{}\"", fs::absolute(libcxx_inc_dir).string());
+	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", fs::absolute(d).string());
+	for sources do (src: fs::path) {
+		cmd_str += " \"(fs::absolute(src).string())$\"";
+	}
+	cmd_str += std::format(" --precompile -o {}/{}.pcm", d.string(), name);
+	return cmd_str;
+}
+
+build_cpp1_module: (name: std::string, sources, module_deps) = {
+	compiler :== cpp2b::compiler();
+	d := fs::absolute(modules_dir());
+	bmi := d / std::format("{}{}", name, bmi_extension(compiler));
 	log_path := fs::path(".cache") / "cpp2" / "log" / "build" / ("(name)$.log");
 
 	fs::remove(bmi);
 	ensure_dir(log_path.parent_path());
 
-	for module_deps do (dep: std::string) {
-		dep_bmi := d / ("(dep)$.ifc");
-		cmd_str += " /reference \"(dep_bmi.string())$\"";
-	}
-
-	for sources do (src: fs::path) {
-		cmd_str += " \"(fs::absolute(src).string())$\"";
-	}
-
-	cmd_str += " /ifcOutput \"(bmi.string())$\"";
+	cmd_str: std::string = "";
+	     if compiler == cpp2b::compiler_type::msvc { cmd_str = cl_build_cpp1_module_cmd(name, sources, module_deps, bmi); }
+	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_cpp1_module_cmd("clang", name, sources, module_deps, bmi); }
+	else if compiler == cpp2b::compiler_type::gcc { cmd_str = unix_build_cpp1_module_cmd("gcc", name, sources, module_deps, bmi); }
+	else { log_error("unsupported compiler"); std::abort(); }
 
 	cmd_str += cmd_log_output(fs::absolute(log_path));
 
