@@ -1,0 +1,64 @@
+import gotoxy;
+
+brightness_chars: std::array == ('.', ',', '-', '~', ':', ';', '=', '!', '*', '%', '#', '$', '@');
+
+main: () = {
+	A: float = 0;
+	B: float = 0;
+	i: float = 0;
+	j: float = 0;
+	k: int = 0;
+	z: std::array<float, 1760> = ();
+	b: std::array<char, 1760> = ();
+
+	std::cout << "\x1b[2J";
+
+	while true {
+		b.fill(32 as char);
+		z.fill(0.0f);
+		
+		j = 0;
+		while j < 6.28 next j += 0.07f {
+			i = 0;
+			while i < 6.28 next i += 0.02f {
+				c: float = sin(i);
+				d: float = cos(j);
+				e: float = sin(A);
+				f: float = sin(j);
+				g: float = cos(A);
+				h: float = d + 2;
+				D: float = 1 / (c * h * e + f * g + 5);
+				l: float = cos(i);
+				m: float = cos(i);
+				n: float = sin(B);
+
+				t: float = c * h * g - f * e;
+
+				x: int = cpp2::unsafe_narrow<int>(40 + 30 * D * (l * h * m - t * n));
+
+				y: int = cpp2::unsafe_narrow<int>(12 + 15 * D * (l * h * n + t * m));
+
+				o: int = x + 80 * y;
+
+				N: int = cpp2::unsafe_narrow<int>(8 * ((f * e - c * d * g) * m - c * d * e - f * g - l * d * n));
+				if 22 > y && y > 0 && x > 0 && 80 > x && D > z[0] {
+					z[o] = D;
+					if N > 0  { b[o] = brightness_chars[N % brightness_chars.size()]; }
+					else      { b[o] = brightness_chars[0]; }
+				}
+			}
+		}
+		std::cout << "\x1b[H";
+		k = 0;
+		while k < 1761 next k++ {
+			if k % 80 {
+				putchar(b[k]);
+			} else {
+				putchar(10);
+			}
+			A += 0.00004f;
+			B += 0.00002f;
+		}
+		gotoxy(0,0);
+	}
+}
