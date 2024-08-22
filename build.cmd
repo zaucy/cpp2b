@@ -83,7 +83,7 @@ cl /nologo ^
     /std:c++latest /W4 /MDd /EHsc ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
-    /c "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" > NUL
+    /c "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
 popd
 
 if %ERRORLEVEL% neq 0 (

@@ -278,7 +278,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 }
 
 has_env: (var_name: *const char) -> bool = {
-	return std::getenv(var_name) != nullptr;
+	return cpp2b::env::get_var(var_name).has_value();
 }
 
 has_msvc_env_vars: () -> bool = {

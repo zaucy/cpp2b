@@ -6,12 +6,16 @@ module;
 #	include <stdlib.h>
 #endif
 
-extern char **environ;
-
 export module cpp2b;
 
 import std;
 import std.compat;
+
+#ifdef _MSC_VER
+	extern char **_environ;
+#else
+	extern char **environ;
+#endif
 
 export namespace cpp2b {
 
@@ -69,13 +73,31 @@ inline auto set_var(const std::string& name, const std::string& value) -> void {
 #endif
 }
 
+inline auto set_var(auto name, auto value) -> void {
+	return cpp2b::env::set_var(std::string{name}, std::string{value});
+}
+
 inline auto get_var(const std::string& name) -> std::optional<std::string> {
+#if defined(_MSC_VER)
+	auto val = std::string{""};
+	val.resize(GetEnvironmentVariableA(name.c_str(), val.data(), 1) - 1);
+
+	if(!val.empty()) {
+		GetEnvironmentVariableA(name.c_str(), val.data(), val.size() + 1);
+		return val;
+	}
+#else
 	auto val = std::getenv(name.c_str());
 	if(val != nullptr) {
 		return std::string{val};
 	}
+#endif
 
 	return {};
+}
+
+inline auto get_var(auto name) -> std::optional<std::string> {
+	return cpp2b::env::get_var(std::string{name});
 }
 
 export class vars {
@@ -150,7 +172,11 @@ public:
 	};
 
 	iterator begin() const noexcept {
+#ifdef _MSC_VER
+		return iterator(_environ);
+#else
 		return iterator(environ);
+#endif
 	}
 
 	iterator end() const noexcept {
