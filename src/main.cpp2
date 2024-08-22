@@ -179,11 +179,11 @@ generate_cpp2b_build_module: () = {
 }
 
 get_vs_tools_dir: () -> fs::path = {
-	return getenv_sv("VCToolsInstallDir").expect("missing 'VCToolsInstallDir' environment variable");
+	return cpp2b::env::get_var("VCToolsInstallDir").expect("missing 'VCToolsInstallDir' environment variable");
 }
 
 get_libcxx_build_root: () -> fs::path = {
-	return getenv_sv("CPP2B_LIBCXX_BUILD_ROOT").expect("missing 'CPP2B_LIBCXX_BUILD_ROOT' environment variable");
+	return cpp2b::env::get_var("CPP2B_LIBCXX_BUILD_ROOT").expect("missing 'CPP2B_LIBCXX_BUILD_ROOT' environment variable");
 }
 
 get_system_modules_dir: (compiler: cpp2b::compiler_type) -> fs::path = {
@@ -287,9 +287,9 @@ has_msvc_env_vars: () -> bool = {
 
 home_dir: () -> fs::path = {
 	if constexpr cpp2b::target_platform() == cpp2b::platform::windows {
-		return getenv_sv("USERPROFILE").expect("USERPROFILE does not exist");
+		return cpp2b::env::get_var("USERPROFILE").expect("USERPROFILE does not exist");
 	} else {
-		return getenv_sv("HOME").expect("HOME does not exist");
+		return cpp2b::env::get_var("HOME").expect("HOME does not exist");
 	}
 }
 
@@ -331,11 +331,32 @@ main: (args) -> int = {
 		argz.emplace_back(arg);
 	}
 
+	if fs::exists(".cache/cpp2/.env") {
+		log_info("loading cached environment variables");
+		env_file: std::ifstream = (".cache/cpp2/.env");
+		line: std::string = "";
+		while env_file && std::getline(env_file, line) {
+			eq_index := line.find("=");
+			if eq_index == std::string::npos { continue; }
+			var_name: std::string_view = (line.data(), eq_index);
+			var_value: std::string_view = (line.data() + eq_index + 1, line.size() - eq_index);
+			cpp2b::env::set_var(var_name, var_value);
+		}
+	}
+
 	if constexpr cpp2b::compiler() == cpp2b::compiler_type::msvc {
 		if !has_msvc_env_vars() {
 			return run_with_msvc_env_vars(argz);
 		} else {
-			log_info("using vs tools {}", getenv_sv("VCToolsVersion").expect("msvc env internal error"));
+			log_info("using vs tools {}", cpp2b::env::get_var("VCToolsVersion").expect("msvc env internal error"));
+
+			if !fs::exists(".cache/cpp2/.env") {
+				log_info("saving environment variables");
+				env_file: std::ofstream = (".cache/cpp2/.env");
+				for cpp2b::env::vars() do(entry) {
+					env_file << entry.name << "=" << entry.value << "\n";
+				}
+			}
 		}
 	} else {
 		libcxx_lib_dir := get_libcxx_build_root() / "lib";
@@ -438,14 +459,6 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	);
 
 	return result;
-}
-
-getenv_sv: (env_var: *const char) -> std::optional<std::string_view> = {
-	val := std::getenv(env_var);
-	if val == nullptr {
-		return std::nullopt;
-	}
-	return std::string_view(val, std::strlen(val));
 }
 
 unix_compile_cppfront: (cc: std::string_view, cppfront_source: fs::path, out_cppfront_binary: fs::path, log_path: fs::path) -> int = {
