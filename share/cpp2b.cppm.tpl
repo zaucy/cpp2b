@@ -80,7 +80,7 @@ inline auto set_var(auto name, auto value) -> void {
 inline auto get_var(const std::string& name) -> std::optional<std::string> {
 #if defined(_MSC_VER)
 	auto val = std::string{""};
-	val.resize(GetEnvironmentVariableA(name.c_str(), val.data(), 1) - 1);
+	val.resize(GetEnvironmentVariableA(name.c_str(), val.data(), 1));
 
 	if(!val.empty()) {
 		GetEnvironmentVariableA(name.c_str(), val.data(), val.size() + 1);
