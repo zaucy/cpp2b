@@ -565,16 +565,7 @@ unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_inf
 
 build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	compiler :== cpp2b::compiler();
-	bin_basename: fs::path;
-	if info.preferred_name {
-		bin_basename = fs::path(info.preferred_name*);
-	} else {
-		bin_basename = fs::path(info.src);
-		while !bin_basename.extension().empty() {
-			bin_basename.replace_extension("");
-		}
-	}
-
+	bin_basename: fs::path = info.name();
 	if bin_basename.extension().empty() {
 		bin_basename.replace_extension(executable_extension());
 	}
@@ -705,6 +696,216 @@ assert_symbol: (d: dylib, symbol) = {
 	}
 }
 
+full_build_info: @struct type = {
+	bins: std::vector<cpp2b_source_binary_info> = ();
+	mods: std::vector<cpp2b_source_module_info> = ();
+	build_scripts: std::vector<cpp2b_source_build_info> = ();
+	unknowns: std::vector<cpp2b_source_unknown_info> = ();
+
+	bin_results: std::vector<build_binary_result> = ();
+}
+
+do_build: () -> (stuff: full_build_info, exit_code: int) = {
+	root_dir := fs::current_path();
+	stuff = ();
+
+	(repo := GitHubRepo("hsutter/cppfront")) { 
+		repo.add("source");
+		repo.add("include");
+		exit_code = ensure_cppfront(repo.path());
+		if exit_code != 0 { return; }
+	}
+
+	ensure_std_modules();
+	generate_cpp2b_module();
+	generate_cpp2b_build_module();
+
+	transpile_source_dir: fs::path = ".cache/cpp2/source";
+	cpp2_source_files: std::vector<fs::path> = ();
+	cpp1_module_source_files: std::vector<fs::path> = ();
+	ec: std::error_code = ();
+
+	for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
+		if p.extension() != ".cpp" { continue; }
+		fs::permissions(p, fs::perms::others_write, fs::perm_options::add, ec);
+		warn_if_error("perms", p, ec);
+		fs::remove(p, ec);
+		warn_if_error("remove", p, ec);
+	}
+
+	src_loop: for fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::follow_directory_symlink) do(p: fs::path) {
+		if p.extension() == ".cpp2" {
+			rel_path := fs::relative(p, fs::current_path());
+			for rel_path do(rel_path_comp) {
+				if rel_path_comp.string().starts_with(".") {
+					continue src_loop;
+				}
+			}
+
+			if rel_path.has_parent_path() {
+				src_root_dir := find_root_dir(rel_path.parent_path());
+				if src_root_dir && src_root_dir* != root_dir {
+					log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
+					continue src_loop;
+				}
+			}
+
+			cpp2_source_files.emplace_back(rel_path);
+		} else if p.extension() == ".cppm" {
+			rel_path := fs::relative(p, fs::current_path());
+			for rel_path do(rel_path_comp) {
+				if rel_path_comp.string().starts_with(".") {
+					continue src_loop;
+				}
+			}
+
+			if rel_path.has_parent_path() {
+				src_root_dir := find_root_dir(rel_path.parent_path());
+				if src_root_dir && src_root_dir* != root_dir {
+					log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
+					continue src_loop;
+				}
+			}
+
+			cpp1_module_source_files.emplace_back(rel_path);
+		}
+	}
+
+	if cpp2_source_files.empty() {
+		log_error("No cpp2 source files");
+		exit_code = 1;
+		return;
+	}
+
+	transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
+	cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
+	transpile_futures.reserve(cpp2_source_files.size());
+	cpp2b_parse_futures.reserve(cpp2_source_files.size());
+
+
+	for cpp2_source_files do(src_file: fs::path) {
+		transpile_futures.emplace_back(std::async(std::launch::async, transpile_cpp2, src_file, transpile_source_dir));
+		cpp2b_parse_futures.emplace_back(std::async(std::launch::async, cpp2b_parse_source, src_file));
+	}
+
+	for transpile_futures do(inout fut) {
+		info := fut.get();
+		if info.cppfront_exit_code != 0 {
+			log_error("cppfront exited with {} while transpiling {} - see log for full details {}", info.cppfront_exit_code, info.src.generic_string(), info.output_log.generic_string());
+			exit_code = info.cppfront_exit_code;
+			return;
+		}
+
+		log_info("transpile {} -> {} ({}ms)", info.src.generic_string(), info.cpp1_output.generic_string(), info.duration.count());
+	}
+
+	for cpp2b_parse_futures do(inout fut) {
+		info := fut.get();
+		if info.is_mod() {
+			stuff.mods.emplace_back(info.mod());
+		} else if info.is_bin() {
+			stuff.bins.emplace_back(info.bin());
+		} else if info.is_build() {
+			stuff.build_scripts.emplace_back(info.build());
+		} else {
+			log_error("source file {} is neither a module or a binary source file", info.unknown().src.generic_string());
+			stuff.unknowns.emplace_back(info.unknown());
+		}
+	}
+
+	for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
+		if p.extension() != ".cpp2" { continue; }
+		fs::permissions(p, fs::perms::others_read, ec);
+		warn_if_error("perms", p, ec);
+	}
+
+	built_modules: std::unordered_map<std::string, bool> = (
+		std::pair("cpp2b", true),
+		std::pair("cpp2b.build", true),
+		std::pair("std", true),
+		std::pair("std.compat", true),
+	);
+
+
+	for cpp1_module_source_files do(src_file: fs::path) {
+		result := cpp2b_parse_cpp1_module_statements(std::ifstream(src_file));
+
+		if result.module_name.empty() {
+			log_error("cannot find exported module in {}", src_file.generic_string());
+			std::abort();
+		}
+
+		if !result.exported {
+			log_error("module {} in {} must be exported", result.module_name, src_file.generic_string());
+			std::abort();
+		}
+		
+		build_cpp1_module(result.module_name, :std::vector=(src_file), result.imports);
+		built_modules[result.module_name] = true;
+	}
+
+	build_script_loop: for stuff.build_scripts do(build_script) {
+		for build_script.imports do(imp) {
+			if !built_modules.contains(imp) {
+				log_error("cannot build build script {} - missing import {}", build_script.src.generic_string(), imp);
+				continue build_script_loop;
+			}
+		}
+
+		build_result := build_build_script(build_script);
+
+		if build_result.exit_code != 0 {
+			log_error("failed to build {} - exit code {}", build_script.src.generic_string(), build_result.exit_code);
+			print_log_file(build_result.log_path);
+			exit_code = build_result.exit_code;
+			return;
+		}
+
+		log_info("build script built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
+
+		build_dylib := dylib(build_result.outpath);
+
+		build_dylib.assert_symbol("cpp2b_detail_build");
+		build_dylib.assert_symbol("cpp2b_detail_build_binary_name");
+
+		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
+
+		b: cpp2b_detail_build_impl = (stuff.bins&);
+		build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
+	}
+
+	for stuff.mods do(mod) {
+		log_warning("cannot build user module {} (yet)", mod.name);
+	}
+
+	bin_loop: for stuff.bins do(bin) {
+		for bin.imports do(imp) {
+			if !built_modules.contains(imp) {
+				log_error("cannot build binary {} - missing import {}", bin.src.generic_string(), imp);
+				continue bin_loop;
+			}
+
+			if imp == "cpp2b.build" {
+				log_error("cpp2b.build module may only be imported in build.cpp files");
+				continue bin_loop;
+			}
+		}
+
+		build_result := build_binary(bin);
+		stuff.bin_results.emplace_back(build_result);
+
+		if build_result.exit_code != 0 {
+			log_error("failed to build binary - exit code {}", build_result.exit_code);
+			print_log_file(build_result.log_path);
+			continue bin_loop;
+		}
+
+		log_success("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
+	}
+	
+	exit_code = 0;
+}
+
 subcommands: type = {
 	clean: (args) -> int = {
 		if !args.empty() {
@@ -740,203 +941,17 @@ subcommands: type = {
 		}
 		fs::current_path(root_dir*);
 
-		(repo := GitHubRepo("hsutter/cppfront")) { 
-			repo.add("source");
-			repo.add("include");
-			(exit_code := ensure_cppfront(repo.path())) if exit_code != 0 {
-				return exit_code;
+		result := do_build();
+
+		for result.stuff.bin_results do(res) {
+			if res.exit_code != 0 {
+				result.exit_code = res.exit_code;
+				log_error("failed to build {}", res.outpath.generic_string());
+				print_log_file(res.log_path);
 			}
 		}
 
-		ensure_std_modules();
-		generate_cpp2b_module();
-		generate_cpp2b_build_module();
-
-		transpile_source_dir: fs::path = ".cache/cpp2/source";
-		cpp2_source_files: std::vector<fs::path> = ();
-		cpp1_module_source_files: std::vector<fs::path> = ();
-		ec: std::error_code = ();
-
-		for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
-			if p.extension() != ".cpp" { continue; }
-			fs::permissions(p, fs::perms::others_write, fs::perm_options::add, ec);
-			warn_if_error("perms", p, ec);
-			fs::remove(p, ec);
-			warn_if_error("remove", p, ec);
-		}
-
-		src_loop: for fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::follow_directory_symlink) do(p: fs::path) {
-			if p.extension() == ".cpp2" {
-				rel_path := fs::relative(p, fs::current_path());
-				for rel_path do(rel_path_comp) {
-					if rel_path_comp.string().starts_with(".") {
-						continue src_loop;
-					}
-				}
-
-				if rel_path.has_parent_path() {
-					src_root_dir := find_root_dir(rel_path.parent_path());
-					if src_root_dir && src_root_dir* != root_dir* {
-						log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
-						continue src_loop;
-					}
-				}
-
-				cpp2_source_files.emplace_back(rel_path);
-			} else if p.extension() == ".cppm" {
-				rel_path := fs::relative(p, fs::current_path());
-				for rel_path do(rel_path_comp) {
-					if rel_path_comp.string().starts_with(".") {
-						continue src_loop;
-					}
-				}
-
-				if rel_path.has_parent_path() {
-					src_root_dir := find_root_dir(rel_path.parent_path());
-					if src_root_dir && src_root_dir* != root_dir* {
-						log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
-						continue src_loop;
-					}
-				}
-
-				cpp1_module_source_files.emplace_back(rel_path);
-			}
-		}
-
-		if cpp2_source_files.empty() {
-			log_error("No cpp2 source files");
-			return 1;
-		}
-
-		transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
-		cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
-		transpile_futures.reserve(cpp2_source_files.size());
-		cpp2b_parse_futures.reserve(cpp2_source_files.size());
-
-
-		for cpp2_source_files do(src_file: fs::path) {
-			transpile_futures.emplace_back(std::async(std::launch::async, transpile_cpp2, src_file, transpile_source_dir));
-			cpp2b_parse_futures.emplace_back(std::async(std::launch::async, cpp2b_parse_source, src_file));
-		}
-
-		for transpile_futures do(inout fut) {
-			info := fut.get();
-			if info.cppfront_exit_code != 0 {
-				log_error("cppfront exited with {} while transpiling {} - see log for full details {}", info.cppfront_exit_code, info.src.generic_string(), info.output_log.generic_string());
-				return info.cppfront_exit_code;
-			}
-
-			log_info("transpile {} -> {} ({}ms)", info.src.generic_string(), info.cpp1_output.generic_string(), info.duration.count());
-		}
-
-		bins: std::vector<cpp2b_source_binary_info> = ();
-		mods: std::vector<cpp2b_source_module_info> = ();
-		build_scripts: std::vector<cpp2b_source_build_info> = ();
-		unknowns: std::vector<cpp2b_source_unknown_info> = ();
-
-		for cpp2b_parse_futures do(inout fut) {
-			info := fut.get();
-			if info.is_mod() {
-				mods.emplace_back(info.mod());
-			} else if info.is_bin() {
-				bins.emplace_back(info.bin());
-			} else if info.is_build() {
-				build_scripts.emplace_back(info.build());
-			} else {
-				log_error("source file {} is neither a module or a binary source file", info.unknown().src.generic_string());
-				unknowns.emplace_back(info.unknown());
-			}
-		}
-
-		for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
-			if p.extension() != ".cpp2" { continue; }
-			fs::permissions(p, fs::perms::others_read, ec);
-			warn_if_error("perms", p, ec);
-		}
-
-		built_modules: std::unordered_map<std::string, bool> = (
-			std::pair("cpp2b", true),
-			std::pair("cpp2b.build", true),
-			std::pair("std", true),
-			std::pair("std.compat", true),
-		);
-
-
-		for cpp1_module_source_files do(src_file: fs::path) {
-			result := cpp2b_parse_cpp1_module_statements(std::ifstream(src_file));
-
-			if result.module_name.empty() {
-				log_error("cannot find exported module in {}", src_file.generic_string());
-				std::abort();
-			}
-
-			if !result.exported {
-				log_error("module {} in {} must be exported", result.module_name, src_file.generic_string());
-				std::abort();
-			}
-			
-			build_cpp1_module(result.module_name, :std::vector=(src_file), result.imports);
-			built_modules[result.module_name] = true;
-		}
-
-		build_script_loop: for build_scripts do(build_script) {
-			for build_script.imports do(imp) {
-				if !built_modules.contains(imp) {
-					log_error("cannot build build script {} - missing import {}", build_script.src.generic_string(), imp);
-					continue build_script_loop;
-				}
-			}
-
-			build_result := build_build_script(build_script);
-
-			if build_result.exit_code != 0 {
-				log_error("failed to build {} - exit code {}", build_script.src.generic_string(), build_result.exit_code);
-				print_log_file(build_result.log_path);
-				return build_result.exit_code;
-			}
-
-			log_info("build script built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
-
-			build_dylib := dylib(build_result.outpath);
-
-			build_dylib.assert_symbol("cpp2b_detail_build");
-			build_dylib.assert_symbol("cpp2b_detail_build_binary_name");
-
-			build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
-
-			b: cpp2b_detail_build_impl = (bins&);
-			build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
-		}
-
-		for mods do(mod) {
-			log_warning("cannot build user module {} (yet)", mod.name);
-		}
-
-		bin_loop: for bins do(bin) {
-			for bin.imports do(imp) {
-				if !built_modules.contains(imp) {
-					log_error("cannot build binary {} - missing import {}", bin.src.generic_string(), imp);
-					continue bin_loop;
-				}
-
-				if imp == "cpp2b.build" {
-					log_error("cpp2b.build module may only be imported in build.cpp files");
-					continue bin_loop;
-				}
-			}
-
-			build_result := build_binary(bin);
-
-			if build_result.exit_code != 0 {
-				log_error("failed to build binary - exit code {}", build_result.exit_code);
-				print_log_file(build_result.log_path);
-				return build_result.exit_code;
-			}
-
-			log_success("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
-		}
-
-		return 0;
+		return result.exit_code;
 	}
 
 	run: (args) -> int = {
@@ -947,11 +962,51 @@ subcommands: type = {
 		}
 		fs::current_path(root_dir*);
 
-		std::println("TODO: run cpp2b project");
-		for args do (arg) {
-			std::println("arg is {}", arg);
+		run_forward_args: std::vector<std::string> = ();
+		(copy forward_args := false) for args do(arg: std::string_view) {
+			if forward_args {
+				run_forward_args.emplace_back(arg);
+			} else if arg == "--" {
+				forward_args = true;
+			} else if arg.starts_with("-") {
+				log_error("unknown flag {}", arg);
+				return 1;
+			} else {
+				log_error("forward args must be placed after --");
+				return 1;
+			}
 		}
-		return 0;
+
+		result := do_build();
+		if result.exit_code != 0 { return result.exit_code; }
+
+		for result.stuff.bin_results do(res) {
+			if res.exit_code != 0 {
+				result.exit_code = res.exit_code;
+				log_error("failed to build {}", res.outpath.generic_string());
+				print_log_file(res.log_path);
+			}
+		}
+
+		if result.stuff.bins.empty() {
+			log_error("no binary targets to run");
+			return 1;
+		}
+
+		if result.stuff.bins.size() != 1 {
+			log_error("more than one binary target found, cannot run");
+			return 1;
+		}
+
+		bin_path := fs::relative(result.stuff.bin_results.at(0).outpath);
+		log_info("running {}", bin_path.generic_string());
+		run_cmd: std::string = bin_path.string();
+
+		for run_forward_args do(fwd_arg) {
+			run_cmd += " " + fwd_arg;
+		}
+
+		return std::system(run_cmd.c_str());
 	}
 
 	init: (args) -> int = {
@@ -1022,6 +1077,19 @@ cpp2b_source_binary_info: @struct type = {
 	src: fs::path = ();
 	imports: std::vector<std::string> = ();
 	preferred_name: std::optional<std::string> = ();
+
+	name: (this) -> std::string = {
+		bin_basename: fs::path;
+		if this.preferred_name {
+			bin_basename = fs::path(this.preferred_name*);
+		} else {
+			bin_basename = fs::path(this.src);
+			while !bin_basename.extension().empty() {
+				bin_basename.replace_extension("");
+			}
+		}
+		return bin_basename.string();
+	}
 }
 
 cpp2b_source_build_info: @struct type = {
