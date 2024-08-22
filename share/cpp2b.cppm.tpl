@@ -6,6 +6,8 @@ module;
 #	include <stdlib.h>
 #endif
 
+extern char **environ;
+
 export module cpp2b;
 
 import std;
@@ -75,4 +77,84 @@ inline auto get_var(const std::string& name) -> std::optional<std::string> {
 
 	return {};
 }
+
+export class vars {
+public:
+	struct entry {
+		std::string_view name;
+		std::string_view value;
+	};
+
+	class iterator {
+	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = entry;
+		using difference_type = std::ptrdiff_t;
+		using pointer = const value_type*;
+		using reference = const value_type&;
+
+		iterator(char** env) : env_(env) {
+			if (env_ && *env_) {
+				update_entry();
+			}
+		}
+
+		reference operator*() const noexcept {
+			return current_entry_;
+		}
+
+		pointer operator->() const noexcept {
+			return &current_entry_;
+		}
+
+		iterator& operator++() noexcept {
+			if (env_ && *env_) {
+				++env_;
+				if (*env_) {
+					update_entry();
+				} else {
+					env_ = nullptr; // end of iteration
+				}
+			}
+			return *this;
+		}
+
+		iterator operator++(int) noexcept {
+			iterator temp = *this;
+			++(*this);
+			return temp;
+		}
+
+		friend bool operator==(const iterator& a, const iterator& b) noexcept {
+			return a.env_ == b.env_;
+		}
+
+		friend bool operator!=(const iterator& a, const iterator& b) noexcept {
+			return !(a == b);
+		}
+
+	private:
+		void update_entry() noexcept {
+			if (env_ && *env_) {
+				std::string_view env_str(*env_);
+				auto pos = env_str.find('=');
+				if (pos != std::string_view::npos) {
+					current_entry_.name = env_str.substr(0, pos);
+					current_entry_.value = env_str.substr(pos + 1);
+				}
+			}
+		}
+
+		char** env_ = nullptr;
+		value_type current_entry_;
+	};
+
+	iterator begin() const noexcept {
+		return iterator(environ);
+	}
+
+	iterator end() const noexcept {
+		return iterator(nullptr);
+	}
+};
 }
