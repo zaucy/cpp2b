@@ -100,7 +100,7 @@ inline auto get_var(auto name) -> std::optional<std::string> {
 	return cpp2b::env::get_var(std::string{name});
 }
 
-export class vars {
+class vars {
 public:
 	struct entry {
 		std::string_view name;
