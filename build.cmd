@@ -60,11 +60,19 @@ if exist "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" (
     del "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" /F
 )
 
-setlocal EnableExtensions EnableDelayedExpansion
-for /f "delims=" %%A in ('type "%root_dir%share\cpp2b.cppm.tpl"') do (
-    set "string=%%A"
-    set "modified=!string:@CPP2B_PROJECT_ROOT@=%root_dir%!"
-    echo !modified!>>"%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
+setlocal enableextensions disabledelayedexpansion
+
+set "search=@CPP2B_PROJECT_ROOT@"
+set "replace=%root_dir%"
+
+set "inputFile=%root_dir%share\cpp2b.cppm.tpl"
+set "outputFile=%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
+
+for /f "delims=" %%i in ('type "%inputFile%"') do (
+    set "line=%%i"
+    setlocal enabledelayedexpansion
+    >>"%outputFile%" echo(!line:%search%=%replace%!
+    endlocal
 )
 endlocal
 
