@@ -14,7 +14,7 @@ import std.compat;
 #ifdef _MSC_VER
 	extern char **_environ;
 #else
-	extern char **environ;
+	extern "C" char **environ;
 #endif
 
 export namespace cpp2b {
