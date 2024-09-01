@@ -179,7 +179,9 @@ generate_cpp2b_build_module: () = {
 }
 
 get_vs_tools_dir: () -> fs::path = {
-	return cpp2b::env::get_var("VCToolsInstallDir").expect("missing 'VCToolsInstallDir' environment variable");
+	return cpp2b::env::get_var("VCToolsInstallDir")
+		.expect("missing 'VCToolsInstallDir' environment variable")
+		.fs::canonical();
 }
 
 get_libcxx_build_root: () -> fs::path = {
