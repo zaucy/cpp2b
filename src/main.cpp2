@@ -629,13 +629,17 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 
 
 cpp2b_detail_build_impl: @struct type = {
+	public build_cpp2_dir: fs::path;
 	public bins: *std::vector<cpp2b_source_binary_info>;
 }
 cpp2b_detail_build_binary_name: (
 	copy impl: *cpp2b_detail_build_impl,
-	copy p: std::filesystem::path,
+	copy rel_binary_src_path: std::filesystem::path,
 	copy new_binary_name: std::string_view,
 ) = {
+	build_cpp2_dir: fs::path = impl*.build_cpp2_dir;
+	p := build_cpp2_dir / rel_binary_src_path;
+
 	bin := std::ranges::find_if(
 		impl*.bins*,
 		:(bin) fs::absolute(bin.src).replace_extension("") == fs::absolute(p$).replace_extension(""),
@@ -645,7 +649,7 @@ cpp2b_detail_build_binary_name: (
 		return;
 	}
 
-	bin*.preferred_name = new_binary_name;
+	bin*.preferred_name = (build_cpp2_dir / new_binary_name).generic_string();
 }
 
 cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
@@ -780,8 +784,8 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 			if rel_path.has_parent_path() {
 				src_root_dir := find_build_cpp2_dir(rel_path.parent_path());
 				if src_root_dir && src_root_dir* != build_cpp2_dir {
-					log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
-					continue src_loop;
+					// log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
+					// continue src_loop;
 				}
 			}
 
@@ -797,8 +801,8 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 			if rel_path.has_parent_path() {
 				src_root_dir := find_build_cpp2_dir(rel_path.parent_path());
 				if src_root_dir && src_root_dir* != build_cpp2_dir {
-					log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
-					continue src_loop;
+					// log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
+					// continue src_loop;
 				}
 			}
 
@@ -905,7 +909,7 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 
 		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
 
-		b: cpp2b_detail_build_impl = (stuff.bins&);
+		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&);
 		build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
 	}
 
