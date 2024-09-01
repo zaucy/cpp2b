@@ -516,21 +516,41 @@ warn_if_error: (context, p: fs::path, ec: std::error_code) -> void = {
 	}
 }
 
-
-find_root_dir: (dir: fs::path) -> std::optional<fs::path> = {
-	return find_root_dir(dir, "build.cpp2");
-}
-
-find_root_dir: (dir: fs::path, filename) -> std::optional<fs::path> = {
-	if dir.empty() { return std::nullopt; }
-
-	if fs::exists(dir / filename) {
-		return dir;
+find_git_root: (copy dir: fs::path) -> std::optional<fs::path> = {
+	while !dir.empty() {
+		if fs::exists(dir / ".git") { return dir; }
+		parent_dir := dir.parent_path();
+		if parent_dir == dir { break; }
+		dir = parent_dir;
 	}
 
-	if !dir.has_parent_path() { return std::nullopt; }
+	return std::nullopt;
+}
 
-	return find_root_dir(dir.parent_path(), filename);
+find_root_dir: (copy dir: fs::path) -> std::optional<fs::path> = {
+	root_dir: std::optional<fs::path> = ();
+
+	while !dir.empty() {
+		if fs::exists(dir / "build.cpp2") { root_dir = dir; }
+		parent_dir := dir.parent_path();
+		if parent_dir == dir { break; }
+		dir = parent_dir;
+	}
+
+	return root_dir;
+}
+
+find_build_cpp2_dir: (copy dir: fs::path) -> std::optional<fs::path> = {
+	build_cpp2_dir: std::optional<fs::path> = ();
+
+	while !dir.empty() {
+		if fs::exists(dir / "build.cpp2") { return dir; }
+		parent_dir := dir.parent_path();
+		if parent_dir == dir { break; }
+		dir = parent_dir;
+	}
+
+	return build_cpp2_dir;
 }
 
 build_binary_result: @struct type = {
@@ -721,7 +741,7 @@ full_build_info: @struct type = {
 }
 
 do_build: () -> (stuff: full_build_info, exit_code: int) = {
-	root_dir := fs::current_path();
+	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
 	(repo := GitHubRepo("hsutter/cppfront")) { 
@@ -758,8 +778,8 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 			}
 
 			if rel_path.has_parent_path() {
-				src_root_dir := find_root_dir(rel_path.parent_path());
-				if src_root_dir && src_root_dir* != root_dir {
+				src_root_dir := find_build_cpp2_dir(rel_path.parent_path());
+				if src_root_dir && src_root_dir* != build_cpp2_dir {
 					log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
 					continue src_loop;
 				}
@@ -775,8 +795,8 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 			}
 
 			if rel_path.has_parent_path() {
-				src_root_dir := find_root_dir(rel_path.parent_path());
-				if src_root_dir && src_root_dir* != root_dir {
+				src_root_dir := find_build_cpp2_dir(rel_path.parent_path());
+				if src_root_dir && src_root_dir* != build_cpp2_dir {
 					log_warning("ignoring subproject source {} - this may change in the future", rel_path.generic_string());
 					continue src_loop;
 				}
@@ -948,13 +968,17 @@ subcommands: type = {
 			log_error("build does not support arguments");
 			return 1;
 		}
-
-		root_dir := find_root_dir(fs::current_path());
+		
+		cwd := fs::current_path();
+		root_dir := find_root_dir(cwd);
 		if !root_dir {
 			log_error("failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
 			return 1;
 		}
-		fs::current_path(root_dir*);
+		if cwd != root_dir* {
+			log_warning("root directory is {}", root_dir*.string());
+			fs::current_path(root_dir*);
+		}
 
 		result := do_build();
 
@@ -970,12 +994,16 @@ subcommands: type = {
 	}
 
 	run: (args) -> int = {
+		cwd := fs::current_path();
 		root_dir := find_root_dir(fs::current_path());
 		if !root_dir {
 			log_error("failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
 			return 1;
 		}
-		fs::current_path(root_dir*);
+		if cwd != root_dir* {
+			log_warning("root directory is {}", root_dir*.string());
+			fs::current_path(root_dir*);
+		}
 
 		run_forward_args: std::vector<std::string> = ();
 		(copy forward_args := false) for args do(arg: std::string_view) {
@@ -1053,7 +1081,7 @@ subcommands: type = {
 		log_info("added src/main.cpp2");
 
 		if !fs::exists(".gitignore") {
-			if !find_root_dir(fs::current_path(), ".git") {
+			if !find_git_root(fs::current_path()) {
 				log_warning("assuming git repository");
 			}
 
