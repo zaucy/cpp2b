@@ -105,6 +105,19 @@ if %ERRORLEVEL% neq 0 (
     exit %ERRORLEVEL%
 )
 
+echo INFO: compiling xxh3 module...
+pushd %modules_dir%
+cl /nologo ^
+    /std:c++latest /W4 /MDd /EHsc ^
+    /reference "%modules_dir%\std.ifc" ^
+    /reference "%modules_dir%\std.compat.ifc" ^
+    /c /interface /TP "%root_dir%src\xxh3.cppm" > NUL
+
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: failed to compile xxh3 module
+    exit %ERRORLEVEL%
+)
+
 echo INFO: compiling nlohmann.json module...
 pushd %modules_dir%
 cl /nologo ^
@@ -140,6 +153,7 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
     /reference "%modules_dir%\std.compat.ifc" "%modules_dir%\std.compat.obj" ^
     /reference "%modules_dir%\dylib.ifc" "%modules_dir%\dylib.obj" ^
     /reference "%modules_dir%\nlohmann.json.ifc" "%modules_dir%\nlohmann.json.obj" ^
+    /reference "%modules_dir%\xxh3.ifc" "%modules_dir%\xxh3.obj" ^
     /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
     /std:c++latest /W4 /MDd /EHsc ^
     /DEBUG:FULL /Zi /FC ^
