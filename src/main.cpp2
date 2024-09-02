@@ -2,6 +2,7 @@ import std.compat;
 import cpp2b;
 import dylib;
 import nlohmann.json;
+import xxh3;
 
 fs: namespace == std::filesystem;
 json: type == nlohmann::json;
@@ -758,7 +759,22 @@ contains_target: (targets, value: std::string) -> bool = {
 	return false;
 }
 
+hash_file: (p: fs::path) -> u64 = {
+	f: std::ifstream = (p, std::ios::binary | std::ios::ate);
+	size: size_t = unsafe_cast<size_t>(f.tellg());
+	f.seekg(0, std::ios::beg);
+	buffer: std::vector<char> = ();
+	buffer.resize(size);
+	f.read(buffer.data(), size);
+	if f.fail() { return 0; }
+	return constexpr_xxh3::XXH3_64bits(buffer.data(), buffer.size());
+}
+
+cpp2b_data_file: type = {
+}
+
 do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_code: int) = {
+	cwd := fs::current_path();
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
@@ -786,9 +802,9 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		warn_if_error("remove", p, ec);
 	}
 
-	src_loop: for fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::follow_directory_symlink) do(p: fs::path) {
+	src_loop: for fs::recursive_directory_iterator(cwd, fs::directory_options::follow_directory_symlink) do(p: fs::path) {
 		if p.extension() == ".cpp2" {
-			rel_path := fs::relative(p, fs::current_path());
+			rel_path := fs::relative(p, cwd);
 			for rel_path do(rel_path_comp) {
 				if rel_path_comp.string().starts_with(".") {
 					continue src_loop;
@@ -816,13 +832,28 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 	transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
 	cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
+	file_hash_futures: std::unordered_map<fs::path, std::future<u64>> = ();
+	file_hash_futures: std::unordered_map<fs::path, std::future<u64>> = ();
+
 	transpile_futures.reserve(cpp2_source_files.size());
 	cpp2b_parse_futures.reserve(cpp2_source_files.size());
-
+	file_hash_futures.reserve(cpp2_source_files.size());
 
 	for cpp2_source_files do(src_file: fs::path) {
+		file_hash_futures.insert(std::make_pair(
+			src_file,
+			std::async(std::launch::async, hash_file, src_file)
+		));
 		transpile_futures.emplace_back(std::async(std::launch::async, transpile_cpp2, src_file, transpile_source_dir));
 		cpp2b_parse_futures.emplace_back(std::async(std::launch::async, cpp2b_parse_source, src_file));
+	}
+
+	for file_hash_futures do(inout entry) {
+		p := entry.first;
+		hash_fut := entry.second&;
+		hash := hash_fut*.get();
+
+		log_info("{} hash is {}", p.generic_string(), hash);
 	}
 
 	for transpile_futures do(inout fut) {
