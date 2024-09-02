@@ -767,10 +767,7 @@ hash_file: (p: fs::path) -> u64 = {
 	buffer.resize(size);
 	f.read(buffer.data(), size);
 	if f.fail() { return 0; }
-	return constexpr_xxh3::XXH3_64bits(buffer.data(), buffer.size());
-}
-
-cpp2b_data_file: type = {
+	return XXH3_64bits(buffer.data(), buffer.size());
 }
 
 do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_code: int) = {
@@ -832,7 +829,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 	transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
 	cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
-	file_hash_futures: std::unordered_map<fs::path, std::future<u64>> = ();
 	file_hash_futures: std::unordered_map<fs::path, std::future<u64>> = ();
 
 	transpile_futures.reserve(cpp2_source_files.size());
