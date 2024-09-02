@@ -830,10 +830,14 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
 	cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
 	file_hash_futures: std::unordered_map<fs::path, std::future<u64>> = ();
+	file_hashes: std::unordered_map<fs::path, u64> = ();
+	prev_file_hashes: std::unordered_map<fs::path, u64> = ();
 
 	transpile_futures.reserve(cpp2_source_files.size());
 	cpp2b_parse_futures.reserve(cpp2_source_files.size());
 	file_hash_futures.reserve(cpp2_source_files.size());
+	file_hashes.reserve(cpp2_source_files.size());
+	prev_file_hashes.reserve(cpp2_source_files.size());
 
 	for cpp2_source_files do(src_file: fs::path) {
 		file_hash_futures.insert(std::make_pair(
@@ -848,8 +852,53 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		p := entry.first;
 		hash_fut := entry.second&;
 		hash := hash_fut*.get();
+		file_hashes.insert(std::make_pair(p, hash));
+	}
 
-		log_info("{} hash is {}", p.generic_string(), hash);
+	data_file: std::fstream = (".cache/cpp2/.data", std::ios::binary | std::ios::in);
+
+	while data_file {
+		path_length: u16 = 0;
+		data_file >> path_length;
+		if !data_file { break; }
+
+		p: std::string = "";
+		p.resize(path_length);
+		data_file.read(p.data(), path_length);
+		if !data_file { break; }
+
+		path_hash: u64 = 0;
+		data_file.read(reinterpret_cast<*char>(path_hash&), 8);
+		if !data_file { break; }
+
+		prev_file_hashes[fs::path(p)] = path_hash;
+	}
+
+	for file_hashes do(inout entry) {
+		p := entry.first;
+		hash := entry.second;
+
+		if prev_file_hashes.contains(p) {
+			if prev_file_hashes.at(p) == hash {
+				log_info("{} no change", p.generic_string());
+			} else {
+				log_info("{} changed", p.generic_string());
+			}
+		} else {
+			log_info("new file {}", p.generic_string());
+		}
+	}
+	
+	data_file.close();
+	data_file.open(".cache/cpp2/.data", std::ios::binary | std::ios::out | std::ios::trunc);
+
+	for file_hashes do(inout entry) {
+		p := entry.first.generic_string();
+		hash := entry.second;
+
+		data_file << unsafe_cast<u16>(p.size());
+		data_file.write(p.data(), p.size());
+		data_file.write(reinterpret_cast<*char>(hash&), 8);
 	}
 
 	for transpile_futures do(inout fut) {
