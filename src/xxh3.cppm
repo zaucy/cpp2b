@@ -39,15 +39,13 @@ Copyright (C) 2012-2020 Yann Collet
 /*
 Modified by Ezekiel Warren
 - removed consteval and _const suffix
+- using c++20 imports
 */
 
 module;
 
-#include <cstddef>
-#include <cstdint>
-#include <iterator>  // for std::data, std::size
-#include <type_traits>
-#include <utility>
+import std;
+import std.compat;
 
 export module xxh3;
 
