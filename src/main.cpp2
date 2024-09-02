@@ -748,6 +748,14 @@ full_build_info: @struct type = {
 	}
 }
 
+contains_target: (targets, value: std::string) -> bool = {
+	for targets do(target: std::string) {
+		if target == value { return true; }
+		if value.starts_with(target + "/") { return true; }
+	}
+	return false;
+}
+
 do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_code: int) = {
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
@@ -913,8 +921,10 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	bin_loop: for stuff.bins do(bin) {
 		bin_target_name := fs::path(bin.name()).generic_string();
 
-		if !targets.empty() && std::ranges::find(targets, bin_target_name) == targets.end() {
-			continue bin_loop;
+		if !targets.empty() {
+			if !targets.contains_target(bin_target_name) {
+				continue bin_loop;
+			}
 		}
 
 		bin_targets.emplace_back(bin_target_name);
@@ -944,7 +954,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	}
 
 	for targets do (target: std::string) {
-		if std::ranges::find(bin_targets, target) == bin_targets.end() {
+		if bin_targets.contains_target(target) {
 			log_warning("requested target '{}' was not found", target);
 		}
 	}
