@@ -51,8 +51,6 @@ module;
 
 export module xxh3;
 
-export namespace constexpr_xxh3 {
-
 template <typename T>
 concept ByteType = (std::is_integral_v<T> && sizeof(T) == 1)
 #if defined __cpp_lib_byte && __cpp_lib_byte >= 201603
@@ -300,7 +298,7 @@ constexpr size_t bytes_size(T (&)[N]) noexcept {
 
 /// Basic interfaces
 
-template <ByteType T>
+export template <ByteType T>
 constexpr uint64_t XXH3_64bits(const T* input, size_t len) noexcept {
   return XXH3_64bits_internal(
       input, len, 0, kSecret, sizeof(kSecret),
@@ -310,7 +308,7 @@ constexpr uint64_t XXH3_64bits(const T* input, size_t len) noexcept {
       });
 }
 
-template <ByteType T, ByteType S>
+export template <ByteType T, ByteType S>
 constexpr uint64_t XXH3_64bits_withSecret(const T* input, size_t len,
                                                 const S* secret,
                                                 size_t secretSize) noexcept {
@@ -322,7 +320,7 @@ constexpr uint64_t XXH3_64bits_withSecret(const T* input, size_t len,
       });
 }
 
-template <ByteType T>
+export template <ByteType T>
 constexpr uint64_t XXH3_64bits_withSeed(const T* input, size_t len,
                                               uint64_t seed) noexcept {
   if (seed == 0) return XXH3_64bits(input, len);
@@ -341,24 +339,21 @@ constexpr uint64_t XXH3_64bits_withSeed(const T* input, size_t len,
 
 /// Convenient interfaces
 
-template <BytesType Bytes>
+export template <BytesType Bytes>
 constexpr uint64_t XXH3_64bits(const Bytes& input) noexcept {
   return XXH3_64bits(std::data(input), bytes_size(input));
 }
 
-template <BytesType Bytes, BytesType Secret>
+export template <BytesType Bytes, BytesType Secret>
 constexpr uint64_t XXH3_64bits_withSecret(const Bytes& input,
                                                 const Secret& secret) noexcept {
   return XXH3_64bits_withSecret(std::data(input), bytes_size(input),
                                       std::data(secret), bytes_size(secret));
 }
 
-template <BytesType Bytes>
+export template <BytesType Bytes>
 constexpr uint64_t XXH3_64bits_withSeed(const Bytes& input,
                                               uint64_t seed) noexcept {
   return XXH3_64bits_withSeed(std::data(input), bytes_size(input), seed);
 }
-
-}  // namespace constexpr_xxh3
-
 
