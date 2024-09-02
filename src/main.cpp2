@@ -742,9 +742,13 @@ full_build_info: @struct type = {
 	unknowns: std::vector<cpp2b_source_unknown_info> = ();
 
 	bin_results: std::vector<build_binary_result> = ();
+
+	empty: (this) -> bool = {
+		return bin_results.empty();
+	}
 }
 
-do_build: () -> (stuff: full_build_info, exit_code: int) = {
+do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_code: int) = {
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
@@ -917,7 +921,20 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 		log_warning("cannot build user module {} (yet)", mod.name);
 	}
 
+	bin_targets: std::vector<std::string> = ();
+	if !targets.empty() {
+		bin_targets.reserve(targets.size());
+	}
+
 	bin_loop: for stuff.bins do(bin) {
+		bin_target_name := fs::path(bin.name()).generic_string();
+
+		if !targets.empty() && std::ranges::find(targets, bin_target_name) == targets.end() {
+			continue bin_loop;
+		}
+
+		bin_targets.emplace_back(bin_target_name);
+
 		for bin.imports do(imp) {
 			if !built_modules.contains(imp) {
 				log_error("cannot build binary {} - missing import {}", bin.src.generic_string(), imp);
@@ -940,6 +957,12 @@ do_build: () -> (stuff: full_build_info, exit_code: int) = {
 		}
 
 		log_success("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
+	}
+
+	for targets do (target: std::string) {
+		if std::ranges::find(bin_targets, target) == bin_targets.end() {
+			log_warning("requested target '{}' was not found", target);
+		}
 	}
 	
 	exit_code = 0;
@@ -968,23 +991,38 @@ subcommands: type = {
 	}
 	
 	build: (args) -> int = {
-		if !args.empty() {
-			log_error("build does not support arguments");
-			return 1;
-		}
-		
 		cwd := fs::current_path();
 		root_dir := find_root_dir(cwd);
 		if !root_dir {
 			log_error("failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
 			return 1;
 		}
+
+		targets: std::vector<std::string> = ();
+		for args do(arg: std::string_view) {
+			if arg.starts_with("-") {
+				log_error("unknown flag {}", arg);
+				return 1;
+			}
+
+			target :=  fs::path(arg)
+				.fs::weakly_canonical()
+				.fs::relative(root_dir*)
+				.generic_string();
+
+			if target.empty() {
+				target = cwd.filename().generic_string();
+			}
+
+			targets.emplace_back(target);
+		}
+
 		if cwd != root_dir* {
 			log_warning("root directory is {}", root_dir*.string());
 			fs::current_path(root_dir*);
 		}
 
-		result := do_build();
+		result := do_build(targets);
 
 		for result.stuff.bin_results do(res) {
 			if res.exit_code != 0 {
@@ -992,6 +1030,11 @@ subcommands: type = {
 				log_error("failed to build {}", res.outpath.generic_string());
 				print_log_file(res.log_path);
 			}
+		}
+
+		if result.stuff.empty() {
+			log_error("no targets built");
+			return 1;
 		}
 
 		return result.exit_code;
@@ -1004,12 +1047,9 @@ subcommands: type = {
 			log_error("failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
 			return 1;
 		}
-		if cwd != root_dir* {
-			log_warning("root directory is {}", root_dir*.string());
-			fs::current_path(root_dir*);
-		}
 
 		run_forward_args: std::vector<std::string> = ();
+		target: std::optional<std::string> = ();
 		(copy forward_args := false) for args do(arg: std::string_view) {
 			if forward_args {
 				run_forward_args.emplace_back(arg);
@@ -1018,13 +1058,30 @@ subcommands: type = {
 			} else if arg.starts_with("-") {
 				log_error("unknown flag {}", arg);
 				return 1;
+			} else if !target {
+				target = fs::path(arg)
+					.fs::weakly_canonical()
+					.fs::relative(root_dir*)
+					.generic_string();
+				if target*.empty() {
+					target = cwd.filename().generic_string();
+				}
 			} else {
 				log_error("forward args must be placed after --");
 				return 1;
 			}
 		}
 
-		result := do_build();
+		if cwd != root_dir* {
+			log_warning("root directory is {}", root_dir*.string());
+			fs::current_path(root_dir*);
+		}
+
+		if !target {
+			target = cwd.filename().generic_string();
+		}
+
+		result := do_build(:std::vector=(target*));
 		if result.exit_code != 0 { return result.exit_code; }
 
 		for result.stuff.bin_results do(res) {
@@ -1035,12 +1092,12 @@ subcommands: type = {
 			}
 		}
 
-		if result.stuff.bins.empty() {
+		if result.stuff.bin_results.empty() {
 			log_error("no binary targets to run");
 			return 1;
 		}
 
-		if result.stuff.bins.size() != 1 {
+		if result.stuff.bin_results.size() != 1 {
 			log_error("more than one binary target found, cannot run");
 			return 1;
 		}
