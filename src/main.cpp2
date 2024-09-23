@@ -702,9 +702,14 @@ unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_buil
 build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 	compiler :== cpp2b::compiler();
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
+	bin_cache_file_path := fs::path(bin_outpath.generic_string() + ".cpp2bcache")
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
 	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
+
+	if fs::exists(bin_outpath) && fs::exists(bin_cache_file_path) {
+		bin_cache_file: std::fstream = (bin_cache_file_path, std::ios::binary);
+	}
 
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "";
@@ -855,21 +860,21 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		file_hashes.insert(std::make_pair(p, hash));
 	}
 
-	data_file: std::fstream = (".cache/cpp2/.data", std::ios::binary | std::ios::in);
+	hash_data_file: std::fstream = (".cache/cpp2/.hash", std::ios::binary | std::ios::in);
 
-	while data_file {
+	while hash_data_file {
 		path_length: u16 = 0;
-		data_file >> path_length;
-		if !data_file { break; }
+		hash_data_file >> path_length;
+		if !hash_data_file { break; }
 
 		p: std::string = "";
 		p.resize(path_length);
-		data_file.read(p.data(), path_length);
-		if !data_file { break; }
+		hash_data_file.read(p.data(), path_length);
+		if !hash_data_file { break; }
 
 		path_hash: u64 = 0;
-		data_file.read(reinterpret_cast<*char>(path_hash&), 8);
-		if !data_file { break; }
+		hash_data_file.read(reinterpret_cast<*char>(path_hash&), 8);
+		if !hash_data_file { break; }
 
 		prev_file_hashes[fs::path(p)] = path_hash;
 	}
@@ -889,16 +894,16 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		}
 	}
 	
-	data_file.close();
-	data_file.open(".cache/cpp2/.data", std::ios::binary | std::ios::out | std::ios::trunc);
+	hash_data_file.close();
+	hash_data_file.open(".cache/cpp2/.data", std::ios::binary | std::ios::out | std::ios::trunc);
 
 	for file_hashes do(inout entry) {
 		p := entry.first.generic_string();
 		hash := entry.second;
 
-		data_file << unsafe_cast<u16>(p.size());
-		data_file.write(p.data(), p.size());
-		data_file.write(reinterpret_cast<*char>(hash&), 8);
+		hash_data_file << unsafe_cast<u16>(p.size());
+		hash_data_file.write(p.data(), p.size());
+		hash_data_file.write(reinterpret_cast<*char>(hash&), 8);
 	}
 
 	for transpile_futures do(inout fut) {
@@ -938,7 +943,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		std::pair("std", true),
 		std::pair("std.compat", true),
 	);
-
 
 	for cpp1_module_source_files do(src_file: fs::path) {
 		result := cpp2b_parse_cpp1_module_statements(std::ifstream(src_file));
