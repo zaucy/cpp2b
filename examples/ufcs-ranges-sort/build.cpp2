@@ -1,0 +1,4 @@
+import cpp2b.build;
+
+build: (inout b: cpp2b::build) -> void = {
+}
