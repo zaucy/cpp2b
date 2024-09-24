@@ -702,7 +702,7 @@ unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_buil
 build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 	compiler :== cpp2b::compiler();
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
-	bin_cache_file_path := fs::path(bin_outpath.generic_string() + ".cpp2bcache")
+	bin_cache_file_path: fs::path = bin_outpath.generic_string() + ".cpp2bcache";
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
 	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
@@ -879,7 +879,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		prev_file_hashes[fs::path(p)] = path_hash;
 	}
 
-	for file_hashes do(inout entry) {
+	for file_hashes do(entry) {
 		p := entry.first;
 		hash := entry.second;
 
@@ -895,7 +895,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	}
 	
 	hash_data_file.close();
-	hash_data_file.open(".cache/cpp2/.data", std::ios::binary | std::ios::out | std::ios::trunc);
+	hash_data_file.open(".cache/cpp2/.hash", std::ios::binary | std::ios::out | std::ios::trunc);
 
 	for file_hashes do(inout entry) {
 		p := entry.first.generic_string();
