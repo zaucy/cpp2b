@@ -28,17 +28,17 @@ ensure_dir: (dir: fs::path) = {
 	}
 }
 
-modules_dir: () modules_dir(fs::current_path());
+modules_dir: () = modules_dir(fs::current_path());
 modules_dir: (base: fs::path) -> fs::path = {
 	return base / ".cache" / "cpp2" / "mod";
 }
 
-binaries_dir: () binaries_dir(fs::current_path());
+binaries_dir: () = binaries_dir(fs::current_path());
 binaries_dir: (base: fs::path) -> fs::path = {
 	return base / ".cache" / "cpp2" / "bin";
 }
 
-find_closest_file: (filename) find_closest_file(filename, fs::current_path());
+find_closest_file: (filename) = find_closest_file(filename, fs::current_path());
 find_closest_file: (filename, base: fs::path) -> std::optional<fs::path> = {
 	if fs::exists(base / filename) {
 		return base / filename;
@@ -267,7 +267,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	cwd := fs::current_path();
 	fs::current_path(d);
 	duration: std::chrono::milliseconds;
-	exit_code := measure(:() std::system(cmd_str$.c_str()), out duration);
+	exit_code := measure(:()=std::system(cmd_str$.c_str()), out duration);
 	fs::current_path(cwd);
 
 	log_info("compile module {} ({}ms)", name, duration.count());
@@ -456,7 +456,7 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	ensure_dir(result.cpp1_output.parent_path());
 
 	result.cppfront_exit_code = measure(
-		:() std::system(cmd_str$.c_str()),
+		:()=std::system(cmd_str$.c_str()),
 		out result.duration,
 	);
 
@@ -622,7 +622,7 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 
 	result: build_binary_result = ();
 	result.outpath = bin_outpath;
-	result.exit_code = measure(:() std::system(cmd_str$.c_str()), out result.duration);
+	result.exit_code = measure(:()=std::system(cmd_str$.c_str()), out result.duration);
 	result.log_path = log_path;
 	return result;
 }
@@ -642,7 +642,7 @@ cpp2b_detail_build_binary_name: (
 
 	bin := std::ranges::find_if(
 		impl*.bins*,
-		:(bin) fs::absolute(bin.src).replace_extension("") == fs::absolute(p$).replace_extension(""),
+		:(bin)=fs::absolute(bin.src).replace_extension("") == fs::absolute(p$).replace_extension(""),
 	);
 	if bin == impl*.bins*..end() {
 		log_warning("cannot name unknown binary target {}", p.generic_string());
@@ -714,7 +714,7 @@ build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 
 	result: build_binary_result = ();
 	result.outpath = bin_outpath;
-	result.exit_code = measure(:() std::system(cmd_str$.c_str()), out result.duration);
+	result.exit_code = measure(:()=std::system(cmd_str$.c_str()), out result.duration);
 	result.log_path = log_path;
 	return result;
 }
