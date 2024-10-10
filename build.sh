@@ -148,6 +148,22 @@ if ! [ -f $MODULES_DIR/dylib.pcm ]; then
     cd $ROOT_DIR
 fi
 
+if ! [ -f $MODULES_DIR/xxh3.pcm ]; then
+    cd $LIBCXX_MODULES_DIR/c++/v1
+    log_info "compiling xxh3 module..."
+
+    $CPP2B_COMPILER                        \
+        -stdlib=libc++                       \
+        -std=c++23                           \
+        -fexperimental-library               \
+        -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+        -fprebuilt-module-path=$MODULES_DIR  \
+        "$ROOT_DIR/src/xxh3.cppm"           \
+        --precompile -o $MODULES_DIR/xxh3.pcm
+
+    cd $ROOT_DIR
+fi
+
 log_info "compiling cpp2b module..."
 if [ -f "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm" ]; then
     rm "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
