@@ -41,15 +41,7 @@ constexpr auto target_platform() -> platform {
 }
 
 constexpr auto compiler() -> compiler_type {
-#if defined(_MSC_VER)
-	return compiler_type::msvc;
-#elif defined(__clang__)
-	return compiler_type::clang;
-#elif defined(__GNUC__)
-	return compiler_type::gcc;
-#else
-#	error unknown compiler
-#endif
+	return compiler_type::@CPP2B_COMPILER@;
 }
 
 constexpr auto build() -> build_type {
