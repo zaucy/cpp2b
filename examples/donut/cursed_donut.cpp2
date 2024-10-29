@@ -34,13 +34,13 @@ main: () = {
 
 				t: float = c * h * g - f * e;
 
-				x: int = cpp2::unsafe_narrow<int>(40 + 30 * D * (l * h * m - t * n));
+				x: int = cpp2::unchecked_narrow<int>(40 + 30 * D * (l * h * m - t * n));
 
-				y: int = cpp2::unsafe_narrow<int>(12 + 15 * D * (l * h * n + t * m));
+				y: int = cpp2::unchecked_narrow<int>(12 + 15 * D * (l * h * n + t * m));
 
 				o: int = x + 80 * y;
 
-				N: int = cpp2::unsafe_narrow<int>(8 * ((f * e - c * d * g) * m - c * d * e - f * g - l * d * n));
+				N: int = cpp2::unchecked_narrow<int>(8 * ((f * e - c * d * g) * m - c * d * e - f * g - l * d * n));
 				if 22 > y && y > 0 && x > 0 && 80 > x && D > z[0] {
 					z[o] = D;
 					if N > 0  { b[o] = brightness_chars[N % brightness_chars.size()]; }
