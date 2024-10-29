@@ -62,16 +62,20 @@ if exist "%root_dir%.cache\cpp2\source\_build\cpp2b.ixx" (
 
 setlocal enableextensions disabledelayedexpansion
 
-set "search=@CPP2B_PROJECT_ROOT@"
-set "replace=%root_dir%"
 
 set "inputFile=%root_dir%share\cpp2b.cppm.tpl"
 set "outputFile=%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
 
+set "compiler_subst=@CPP2B_COMPILER@"
+set "compiler_value=msvc"
+set "project_root_subst=@CPP2B_PROJECT_ROOT@"
+set "project_root_value=%root_dir%"
 for /f "delims=" %%i in ('type "%inputFile%"') do (
     set "line=%%i"
     setlocal enabledelayedexpansion
-    >>"%outputFile%" echo(!line:%search%=%replace%!
+    call set "line=!line:%compiler_subst%=%compiler_value%!"
+    call set "line=!line:%project_root_subst%=%project_root_value%!"
+    >>"%outputFile%" echo(!line!
     endlocal
 )
 endlocal
