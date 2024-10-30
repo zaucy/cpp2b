@@ -105,6 +105,20 @@ if %ERRORLEVEL% neq 0 (
     exit %ERRORLEVEL%
 )
 
+echo INFO: compiling nlohmann.json module...
+pushd %modules_dir%
+cl /nologo ^
+    /std:c++latest /W4 /MDd /EHsc ^
+    /reference "%modules_dir%\std.ifc" ^
+    /reference "%modules_dir%\std.compat.ifc" ^
+    /c /interface /TP "%root_dir%src\nlohmann_json.cppm" > NUL
+popd
+
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: failed to compile nlohmann.json module
+    exit %ERRORLEVEL%
+)
+
 if not exist %cppfront% (
     pushd .cache\repos\cppfront\source
     echo INFO: compiling cppfront...
@@ -125,6 +139,7 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
     /reference "%modules_dir%\std.ifc" "%modules_dir%\std.obj" ^
     /reference "%modules_dir%\std.compat.ifc" "%modules_dir%\std.compat.obj" ^
     /reference "%modules_dir%\dylib.ifc" "%modules_dir%\dylib.obj" ^
+    /reference "%modules_dir%\nlohmann.json.ifc" "%modules_dir%\nlohmann_json.obj" ^
     /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
     /std:c++latest /W4 /MDd /EHsc ^
     /DEBUG:FULL /Zi /FC ^
