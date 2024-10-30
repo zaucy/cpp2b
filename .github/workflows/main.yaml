@@ -49,11 +49,11 @@ jobs:
     name: 'build.sh'
     runs-on: ubuntu-24.04
     steps:
-      - run: sudo apt-get install libclang-dev ninja-build -y
       - run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
       - run: sudo ./llvm.sh 19
       - run: rm ./llvm.sh
+      - run: sudo apt-get install libc++-19-dev ninja-build libclang-19-dev -y
       - uses: actions/checkout@v4
       - run: ./build.sh
       - uses: actions/upload-artifact@v4
