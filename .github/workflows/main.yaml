@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - run: sudo apt-get install libclang-dev ninja-build -y
-      - run: bash -c "$(wget -O - https://apt.llvm.org/llvm.sh) 19"
+      - run: sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh) 19"
       - run: ./build.sh
       - uses: actions/upload-artifact@v4
         with:
