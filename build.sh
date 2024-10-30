@@ -145,6 +145,21 @@ if ! [ -f $MODULES_DIR/dylib.pcm ]; then
     cd $ROOT_DIR
 fi
 
+if ! [ -f $MODULES_DIR/nlohmann.json.pcm ]; then
+    log_info "compiling nlohmann.json module..."
+
+    $CPP2B_COMPILER                        \
+        -stdlib=libc++                       \
+        -std=c++23                           \
+        -fexperimental-library               \
+        -isystem $LLVM_ROOT/include/c++/v1  \
+        -fprebuilt-module-path=$MODULES_DIR  \
+        "$ROOT_DIR/src/nlohmann_json.cppm"           \
+        --precompile -o $MODULES_DIR/nlohmann.json.pcm
+
+    cd $ROOT_DIR
+fi
+
 log_info "compiling cpp2b module..."
 if [ -f "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm" ]; then
     rm "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
@@ -170,6 +185,7 @@ $CPP2B_COMPILER                                   \
     "$MODULES_DIR/cpp2b.pcm"                      \
     "$MODULES_DIR/dylib.pcm"                      \
     "$MODULES_DIR/std.compat.pcm"                 \
+    "$MODULES_DIR/nlohmann.json.pcm"              \
     "$ROOT_DIR/.cache/cpp2/source/src/main.cpp"   \
     -std=c++23                                    \
     -fexperimental-library                        \

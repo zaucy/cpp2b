@@ -1,6 +1,7 @@
 import std.compat;
 import cpp2b;
 import dylib;
+import nlohmann.json;
 
 fs: namespace == std::filesystem;
 
