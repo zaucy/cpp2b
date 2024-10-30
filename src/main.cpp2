@@ -4,6 +4,7 @@ import dylib;
 import nlohmann.json;
 
 fs: namespace == std::filesystem;
+json: type == nlohmann::json;
 
 log_error: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Args) = {
 	std::println("\033[0;31mERROR\033[0m: {}", std::format(fmt, args...));

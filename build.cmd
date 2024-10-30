@@ -111,7 +111,7 @@ cl /nologo ^
     /std:c++latest /W4 /MDd /EHsc ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
-    /c /interface /TP "%root_dir%src\nlohmann_json.cppm" > NUL
+    /c /interface /TP "%root_dir%src\nlohmann.json.cppm" > NUL
 popd
 
 if %ERRORLEVEL% neq 0 (
@@ -139,7 +139,7 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
     /reference "%modules_dir%\std.ifc" "%modules_dir%\std.obj" ^
     /reference "%modules_dir%\std.compat.ifc" "%modules_dir%\std.compat.obj" ^
     /reference "%modules_dir%\dylib.ifc" "%modules_dir%\dylib.obj" ^
-    /reference "%modules_dir%\nlohmann.json.ifc" "%modules_dir%\nlohmann_json.obj" ^
+    /reference "%modules_dir%\nlohmann.json.ifc" "%modules_dir%\nlohmann.json.obj" ^
     /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
     /std:c++latest /W4 /MDd /EHsc ^
     /DEBUG:FULL /Zi /FC ^

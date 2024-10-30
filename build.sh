@@ -154,7 +154,7 @@ if ! [ -f $MODULES_DIR/nlohmann.json.pcm ]; then
         -fexperimental-library               \
         -isystem $LLVM_ROOT/include/c++/v1  \
         -fprebuilt-module-path=$MODULES_DIR  \
-        "$ROOT_DIR/src/nlohmann_json.cppm"           \
+        "$ROOT_DIR/src/nlohmann.json.cppm"           \
         --precompile -o $MODULES_DIR/nlohmann.json.pcm
 
     cd $ROOT_DIR
