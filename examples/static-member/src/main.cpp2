@@ -1,10 +1,10 @@
 Month: type = {
 	id_: int;
-	names: std::vector<std::string> == ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
+	names: () == :std::array=("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
 }
 
 main: () = {
-	for Month::names do(name) {
+	for Month::names() do(name) {
 		std::println("hello {}", name);
 	}
 }
