@@ -1,4 +1,4 @@
 [files]
 extend-exclude = [
-	"src/nlohmann_json.cppm",
+	"src/nlohmann.json.cppm",
 ]
