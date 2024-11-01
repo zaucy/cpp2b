@@ -19,8 +19,6 @@ mkdir -p $ROOT_DIR/dist/debug
 mkdir -p $ROOT_DIR/.cache/cpp2/source/src
 mkdir -p $ROOT_DIR/.cache/cpp2/source/_build
 
-CPP2B_COMPILER=${CC:=clang}
-
 function log_info() {
     echo "INFO: $1"
 }
@@ -34,6 +32,18 @@ function fatal() {
     exit 1
 }
 
+if [[ -z "$CC" ]]; then
+    COMPILER_VERSION=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+    COMPILER_MAJOR_VERSION=$(echo $COMPILER_VERSION | cut -d. -f1)
+    if [ "$COMPILER_MAJOR_VERSION" -lt 19 ]; then
+        CC=clang-19
+    else
+        CC=clang
+    fi
+fi
+
+CPP2B_COMPILER=${CC}
+
 if ! [ -x "$(command -v $CPP2B_COMPILER)" ]; then
     fatal "cannot find $CPP2B_COMPILER in your PATH"
 fi
@@ -44,21 +54,11 @@ fi
 
 COMPILER_VERSION=$($CPP2B_COMPILER --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
 COMPILER_MAJOR_VERSION=$(echo $COMPILER_VERSION | cut -d. -f1)
-if [ "$COMPILER_MAJOR_VERSION" -lt 18 ]; then
-    fatal "clang version 18 or newer only supported: detected $COMPILER_VERSION"
+if [ "$COMPILER_MAJOR_VERSION" -lt 19 ]; then
+    fatal "clang version 19 or newer only supported: detected $COMPILER_VERSION"
 fi
 
-if [[ -z "${CPP2B_LIBCXX_BUILD_ROOT}" ]]; then
-    log_error "libcxx with module support must be built from source"
-    log_error "follow these instructions https://github.com/llvm/llvm-project/blob/main/libcxx/docs/Modules.rst"
-    fatal "missing CPP2B_LIBCXX_BUILD_ROOT environment variable"
-fi
-
-log_info "using libcxx build root $CPP2B_LIBCXX_BUILD_ROOT"
-
-if ! [ -d $CPP2B_LIBCXX_BUILD_ROOT ]; then
-    log_fatal "directory $CPP2B_LIBCXX_BUILD_ROOT does not exist"
-fi
+log_info "using compiler '$CPP2B_COMPILER' version '$COMPILER_VERSION'"
 
 function ensure_gh_repo() {
     local repo=$1
@@ -88,9 +88,7 @@ ensure_gh_repo_subdir "hsutter/cppfront" "include"
 
 CPPFRONT_INCLUDE_DIR=$ROOT_DIR/.cache/repos/hsutter/cppfront/include
 
-LIBCXX_MODULES_DIR=$CPP2B_LIBCXX_BUILD_ROOT/modules
-LIBCXX_INCLUDE_DIR=$CPP2B_LIBCXX_BUILD_ROOT/include
-LIBCXX_LIB_DIR=$CPP2B_LIBCXX_BUILD_ROOT/lib
+LLVM_ROOT=/usr/lib/llvm-$COMPILER_MAJOR_VERSION
 
 if ! [ -x $CPPFRONT ]; then
     log_info "compiling cppfront..."
@@ -100,14 +98,14 @@ if ! [ -x $CPPFRONT ]; then
 fi
 
 if ! [ -f $MODULES_DIR/std.pcm ]; then
-    cd $LIBCXX_MODULES_DIR/c++/v1
+    cd $LLVM_ROOT/share/libc++/v1
     log_info "compiling std module..."
 
     $CPP2B_COMPILER                        \
         -stdlib=libc++                       \
         -std=c++23                           \
         -fexperimental-library               \
-        -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+        -isystem $LLVM_ROOT/include/c++/v1  \
         -Wno-reserved-module-identifier      \
         std.cppm                             \
         --precompile -o $MODULES_DIR/std.pcm
@@ -116,14 +114,14 @@ if ! [ -f $MODULES_DIR/std.pcm ]; then
 fi
 
 if ! [ -f $MODULES_DIR/std.compat.pcm ]; then
-  cd $LIBCXX_MODULES_DIR/c++/v1
+  cd $LLVM_ROOT/share/libc++/v1
   log_info "compiling std.compat module..."
 
   $CPP2B_COMPILER                        \
     -stdlib=libc++                       \
     -std=c++23                           \
     -fexperimental-library               \
-    -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+    -isystem $LLVM_ROOT/include/c++/v1  \
     -Wno-reserved-module-identifier      \
     -fprebuilt-module-path=$MODULES_DIR  \
     std.compat.cppm                      \
@@ -133,17 +131,31 @@ if ! [ -f $MODULES_DIR/std.compat.pcm ]; then
 fi
 
 if ! [ -f $MODULES_DIR/dylib.pcm ]; then
-    cd $LIBCXX_MODULES_DIR/c++/v1
     log_info "compiling dylib module..."
 
     $CPP2B_COMPILER                        \
         -stdlib=libc++                       \
         -std=c++23                           \
         -fexperimental-library               \
-        -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+        -isystem $LLVM_ROOT/include/c++/v1  \
         -fprebuilt-module-path=$MODULES_DIR  \
         "$ROOT_DIR/src/dylib.cppm"           \
         --precompile -o $MODULES_DIR/dylib.pcm
+
+    cd $ROOT_DIR
+fi
+
+if ! [ -f $MODULES_DIR/nlohmann.json.pcm ]; then
+    log_info "compiling nlohmann.json module..."
+
+    $CPP2B_COMPILER                        \
+        -stdlib=libc++                       \
+        -std=c++23                           \
+        -fexperimental-library               \
+        -isystem $LLVM_ROOT/include/c++/v1  \
+        -fprebuilt-module-path=$MODULES_DIR  \
+        "$ROOT_DIR/src/nlohmann.json.cppm"           \
+        --precompile -o $MODULES_DIR/nlohmann.json.pcm
 
     cd $ROOT_DIR
 fi
@@ -159,7 +171,7 @@ $CPP2B_COMPILER                                       \
     -stdlib=libc++                                    \
     -std=c++23                                        \
     -fexperimental-library                            \
-    -isystem $LIBCXX_INCLUDE_DIR/c++/v1               \
+    -isystem $LLVM_ROOT/include/c++/v1                \
     -fprebuilt-module-path=$MODULES_DIR               \
     "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"  \
     --precompile -o $MODULES_DIR/cpp2b.pcm
@@ -173,14 +185,15 @@ $CPP2B_COMPILER                                   \
     "$MODULES_DIR/cpp2b.pcm"                      \
     "$MODULES_DIR/dylib.pcm"                      \
     "$MODULES_DIR/std.compat.pcm"                 \
+    "$MODULES_DIR/nlohmann.json.pcm"              \
     "$ROOT_DIR/.cache/cpp2/source/src/main.cpp"   \
     -std=c++23                                    \
     -fexperimental-library                        \
     -Wno-unused-result                            \
     -Wno-deprecated-declarations                  \
     -fprebuilt-module-path=$MODULES_DIR           \
-    -L$LIBCXX_LIB_DIR                             \
-    -isystem $LIBCXX_INCLUDE_DIR/c++/v1           \
+    -L$LLVM_ROOT/lib                              \
+    -isystem $LLVM_ROOT/include/c++/v1            \
     -lc++abi                                      \
     -lc++                                         \
     -lm                                           \
