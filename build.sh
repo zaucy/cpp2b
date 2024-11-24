@@ -62,10 +62,15 @@ log_info "using compiler '$CPP2B_COMPILER' version '$COMPILER_VERSION'"
 
 function ensure_gh_repo() {
     local repo=$1
+    local branch=$2
     local repo_path=$ROOT_DIR/.cache/repos/$repo
     if ! [ -d $repo_path ]; then
         mkdir -p $repo_path
-        git clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/$repo $repo_path
+        if [ -z "${branch}" ]; then
+            git clone --quiet --depth=1 --branch=$branch --filter=blob:none --sparse https://github.com/$repo $repo_path
+        else
+            git clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/$repo $repo_path
+        fi
     fi
 }
 
@@ -82,7 +87,7 @@ function ensure_gh_repo_subdir() {
     fi
 }
 
-ensure_gh_repo "hsutter/cppfront"
+ensure_gh_repo "hsutter/cppfront" "v0.8.0"
 ensure_gh_repo_subdir "hsutter/cppfront" "source"
 ensure_gh_repo_subdir "hsutter/cppfront" "include"
 
