@@ -65,12 +65,12 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 GitHubRepo: type = {
 	private repo_: fs::path;
 
-	operator=: (out this, repo) = {
+	operator=: (out this, repo, branch) = {
 		repo_ = repo;
 
 		if !fs::exists(path() / ".git") {
 			ensure_dir(path());
-			git_("clone --depth=1 --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
+			git_("clone --depth=1 --branch=(branch)$ --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
 		}
 	}
 
@@ -762,7 +762,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
-	(repo := GitHubRepo("hsutter/cppfront")) { 
+	(repo := GitHubRepo("hsutter/cppfront", "v0.8.0")) { 
 		repo.add("source");
 		repo.add("include");
 		exit_code = ensure_cppfront(repo.path());

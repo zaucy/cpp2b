@@ -62,10 +62,11 @@ log_info "using compiler '$CPP2B_COMPILER' version '$COMPILER_VERSION'"
 
 function ensure_gh_repo() {
     local repo=$1
+    local branch=$2
     local repo_path=$ROOT_DIR/.cache/repos/$repo
     if ! [ -d $repo_path ]; then
         mkdir -p $repo_path
-        git clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/$repo $repo_path
+        git clone --quiet --depth=1 --branch=$branch --filter=blob:none --sparse https://github.com/$repo $repo_path
     fi
 }
 
@@ -82,7 +83,7 @@ function ensure_gh_repo_subdir() {
     fi
 }
 
-ensure_gh_repo "hsutter/cppfront"
+ensure_gh_repo "hsutter/cppfront" "v0.8.0"
 ensure_gh_repo_subdir "hsutter/cppfront" "source"
 ensure_gh_repo_subdir "hsutter/cppfront" "include"
 
@@ -93,7 +94,22 @@ LLVM_ROOT=/usr/lib/llvm-$COMPILER_MAJOR_VERSION
 if ! [ -x $CPPFRONT ]; then
     log_info "compiling cppfront..."
     cd $ROOT_DIR/.cache/repos/hsutter/cppfront/source
-    $CPP2B_COMPILER -lstdc++ -lc -lm -fuse-ld=lld -std=c++23 cppfront.cpp -o $CPPFRONT
+    $CPP2B_COMPILER \
+        -std=c++23                                    \
+        -stdlib=libc++                                \
+        -fexperimental-library                        \
+        -Wno-unused-result                            \
+        -Wno-deprecated-declarations                  \
+        -fprebuilt-module-path=$MODULES_DIR           \
+        -L$LLVM_ROOT/lib                              \
+        -isystem $LLVM_ROOT/include/c++/v1            \
+        -lc++abi                                      \
+        -lc++                                         \
+        -lm                                           \
+        -static                                       \
+        -fuse-ld=lld                                  \
+        -I"$CPPFRONT_INCLUDE_DIR"                     \
+        cppfront.cpp -o $CPPFRONT
     cd $ROOT_DIR
 fi
 
