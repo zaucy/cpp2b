@@ -66,11 +66,7 @@ function ensure_gh_repo() {
     local repo_path=$ROOT_DIR/.cache/repos/$repo
     if ! [ -d $repo_path ]; then
         mkdir -p $repo_path
-        if [ -z "${branch}" ]; then
-            git clone --quiet --depth=1 --branch=$branch --filter=blob:none --sparse https://github.com/$repo $repo_path
-        else
-            git clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/$repo $repo_path
-        fi
+        git clone --quiet --depth=1 --branch=$branch --filter=blob:none --sparse https://github.com/$repo $repo_path
     fi
 }
 
@@ -98,7 +94,22 @@ LLVM_ROOT=/usr/lib/llvm-$COMPILER_MAJOR_VERSION
 if ! [ -x $CPPFRONT ]; then
     log_info "compiling cppfront..."
     cd $ROOT_DIR/.cache/repos/hsutter/cppfront/source
-    $CPP2B_COMPILER -lstdc++ -lc -lm -fuse-ld=lld -std=c++23 cppfront.cpp -o $CPPFRONT
+    $CPP2B_COMPILER \
+        -std=c++23                                    \
+        -stdlib=libc++                                \
+        -fexperimental-library                        \
+        -Wno-unused-result                            \
+        -Wno-deprecated-declarations                  \
+        -fprebuilt-module-path=$MODULES_DIR           \
+        -L$LLVM_ROOT/lib                              \
+        -isystem $LLVM_ROOT/include/c++/v1            \
+        -lc++abi                                      \
+        -lc++                                         \
+        -lm                                           \
+        -static                                       \
+        -fuse-ld=lld                                  \
+        -I"$CPPFRONT_INCLUDE_DIR"                     \
+        cppfront.cpp -o $CPPFRONT
     cd $ROOT_DIR
 fi
 
