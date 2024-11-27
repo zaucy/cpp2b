@@ -766,7 +766,7 @@ contains_target: (targets, value: std::string) -> bool = {
 
 hash_file: (p: fs::path) -> u64 = {
 	f: std::ifstream = (p, std::ios::binary | std::ios::ate);
-	size: size_t = unsafe_cast<size_t>(f.tellg());
+	size: size_t = unchecked_cast<size_t>(f.tellg());
 	f.seekg(0, std::ios::beg);
 	buffer: std::vector<char> = ();
 	buffer.resize(size);
@@ -901,7 +901,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		p := entry.first.generic_string();
 		hash := entry.second;
 
-		hash_data_file << unsafe_cast<u16>(p.size());
+		hash_data_file << unchecked_cast<u16>(p.size());
 		hash_data_file.write(p.data(), p.size());
 		hash_data_file.write(reinterpret_cast<*char>(hash&), 8);
 	}
