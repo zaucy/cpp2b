@@ -112,6 +112,7 @@ cl /nologo ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
     /c /interface /TP "%root_dir%src\xxh3.cppm" > NUL
+popd
 
 if %ERRORLEVEL% neq 0 (
     echo ERROR: failed to compile xxh3 module
