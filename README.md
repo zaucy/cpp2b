@@ -29,22 +29,6 @@ There is no installer for `cpp2b` at this time. Instead you must compile and ins
 * clone this repo
 * run `./install.sh`
 
-As of writing this you'll need to manually compile libcxx with module support by [following these instructions](https://github.com/llvm/llvm-project/blob/main/libcxx/docs/Modules.rst). After which you must assign the `CPP2B_LIBCXX_BUILD_ROOT` environment variable to the folder where you built libcxx.
-
-For example this is what I use to build libcxx on my machine running Ubuntu.
-
-```bash
-cd ~/projects
-git clone https://github.com/llvm/llvm-project.git
-cd llvm-project
-mkdir build
-CC=clang CXX=clang++ cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"
-ninja -C build
-
-# install cpp2b
-CPP2B_LIBCXX_BUILD_ROOT=~/projects/llvm-project/build ./install.sh
-```
-
 ### First project and how it works
 
 A `cpp2b` project simply contains a `build.cpp2` at it's root. This file gets compiled and the `build` function is _ran_ while building your project. Inside your `build.cpp2` file you can configure your project. This configuration is very limited at this time and will be expanded more in the future. Other `*.cpp2` files are discovered and are parsed to see what kind of output file should be built. If your `.cpp2` file has a `main` function then it is assumed to be an [_executable_](#building-executables) and if it contains a `module` statement it is considered a [module](#building-modules). All output from `cpp2b` is in the directory `.cache/cpp2` and should be added to the ignore file of your source control of choice.
