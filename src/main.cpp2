@@ -579,6 +579,7 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> 
 	cmd_str += " \"(transpiled_src.string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(bin_outpath.string())$\"";
+	cmd_str += " /Fo\"(bin_parent_dir)$\"";
 	cmd_str += " /Fd\"(bin_parent_dir)$\\\\\"";
 	return cmd_str;
 }
