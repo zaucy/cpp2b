@@ -2,3 +2,6 @@
 extend-exclude = [
 	"src/nlohmann.json.cppm",
 ]
+
+[default]
+extend-ignore-re = ["(?Rm)^.*(#|//)\\s*typos:disable-line$"]
