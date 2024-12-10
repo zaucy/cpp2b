@@ -566,6 +566,10 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> 
 	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
+
+	bin_parent_dir := fs::relative(bin_outpath).parent_path().string();
+	std::replace(bin_parent_dir.begin(), bin_parent_dir.end(), '/', '\\');
+
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
@@ -575,6 +579,8 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> 
 	cmd_str += " \"(transpiled_src.string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(bin_outpath.string())$\"";
+	cmd_str += " /Fo\"(bin_parent_dir)$\"";  // typos:disable-line
+	cmd_str += " /Fd\"(bin_parent_dir)$\\\\\"";
 	return cmd_str;
 }
 
@@ -932,7 +938,11 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		bin_targets.reserve(targets.size());
 	}
 
-	bin_loop: for stuff.bins do(bin) {
+
+	bin_futures: std::vector<std::pair<std::reference_wrapper<cpp2b_source_binary_info>, std::future<build_binary_result>>> = ();
+	bin_futures.reserve(stuff.bins.size());
+
+	bin_loop: for stuff.bins do(inout bin) {
 		bin_target_name := fs::path(bin.name()).generic_string();
 
 		if !targets.empty() {
@@ -955,13 +965,22 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			}
 		}
 
-		build_result := build_binary(bin);
+		bin_futures.emplace_back(
+			std::ref(bin),
+			std::async(std::launch::async, build_binary, bin)
+		);
+	}
+
+	for bin_futures do(inout p) {
+		build_result := p.second.get();
+		bin := p.first.get();
+
 		stuff.bin_results.emplace_back(build_result);
 
 		if build_result.exit_code != 0 {
 			log_error("failed to build binary - exit code {}", build_result.exit_code);
 			print_log_file(build_result.log_path);
-			continue bin_loop;
+			continue;
 		}
 
 		log_success("binary built {} ({}ms)", fs::relative(build_result.outpath).generic_string(), build_result.duration.count());
