@@ -671,7 +671,8 @@ cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path
 	cmd_str += " \"(transpiled_src .string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(fs::relative(bin_outpath).string())$\"";
-	cmd_str += " /Fo\"(fs::relative(bin_outpath).parent_path())$\"";
+	// typos:disable-line
+	cmd_str += " /Fo\"(fs::relative(bin_outpath).parent_path().string())$\"";
 	cmd_str += " /link";
 	return cmd_str;
 }
