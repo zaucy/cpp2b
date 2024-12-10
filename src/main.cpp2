@@ -566,6 +566,10 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> 
 	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
+
+	bin_parent_dir := fs::relative(bin_outpath).parent_path().string();
+	std::replace(bin_parent_dir.begin(), bin_parent_dir.end(), '/', '\\');
+
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
@@ -575,7 +579,7 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> 
 	cmd_str += " \"(transpiled_src.string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(bin_outpath.string())$\"";
-	cmd_str += " /Fd\"(fs::relative(bin_outpath).parent_path().string())$\\\"";
+	cmd_str += " /Fd\"(bin_parent_dir)$\\\\\"";
 	return cmd_str;
 }
 
