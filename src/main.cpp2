@@ -671,6 +671,7 @@ cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path
 	cmd_str += " \"(transpiled_src .string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " /Fe\"(fs::relative(bin_outpath).string())$\"";
+	cmd_str += " /Fo\"(fs::relative(bin_outpath).parent_path())$\"";
 	cmd_str += " /link";
 	return cmd_str;
 }
@@ -881,7 +882,10 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		built_modules[result.module_name] = true;
 	}
 
-	build_script_loop: for stuff.build_scripts do(build_script) {
+	build_script_futures: std::vector<std::pair<std::reference_wrapper<cpp2b_source_build_info>, std::future<build_binary_result>>> = ();
+	build_script_futures.reserve(stuff.build_scripts.size());
+
+	build_script_loop: for stuff.build_scripts do(inout build_script) {
 		for build_script.imports do(imp) {
 			if !built_modules.contains(imp) {
 				log_error("cannot build build script {} - missing import {}", build_script.src.generic_string(), imp);
@@ -889,7 +893,15 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			}
 		}
 
-		build_result := build_build_script(build_script);
+		build_script_futures.emplace_back(
+			std::ref(build_script),
+			std::async(std::launch::async, build_build_script, build_script)
+		);
+	}
+	
+	for build_script_futures do(inout p) {
+		build_result := p.second.get();
+		build_script := p.first.get();
 
 		if build_result.exit_code != 0 {
 			log_error("failed to build {} - exit code {}", build_script.src.generic_string(), build_result.exit_code);
