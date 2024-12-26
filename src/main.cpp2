@@ -494,7 +494,7 @@ ensure_cppfront: (cppfront_source: fs::path) -> int = {
 		cppfront_compile_log_path: fs::path = ".cache/cpp2/log/cppfront.log";
 
 		if cpp2b::compiler() == cpp2b::compiler_type::clang {
-			return unix_compile_cppfront("clang", fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
+			return unix_compile_cppfront("clang-19", fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
 		}
 
 		if cpp2b::compiler() == cpp2b::compiler_type::gcc {
