@@ -635,10 +635,15 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	return result;
 }
 
+cpp2b_reflect_header_info: @struct type = {
+	public header_paths: std::vector<fs::path>;
+	public metafunction_names: std::vector<std::string>;
+}
 
 cpp2b_detail_build_impl: @struct type = {
 	public build_cpp2_dir: fs::path;
 	public bins: *std::vector<cpp2b_source_binary_info>;
+	public reflect_inject: cpp2b_reflect_header_info;
 }
 cpp2b_detail_build_binary_name: (
 	copy impl: *cpp2b_detail_build_impl,
@@ -658,6 +663,21 @@ cpp2b_detail_build_binary_name: (
 	}
 
 	bin*.preferred_name = (build_cpp2_dir / new_binary_name).generic_string();
+}
+
+
+cpp2b_detail_build_cppfront_reflect_inject: (
+	copy impl: *cpp2b_detail_build_impl,
+	copy header_path: std::filesystem::path,
+) = {
+	build_cpp2_dir: fs::path = impl*.build_cpp2_dir;
+	p := build_cpp2_dir / header_path;
+
+	if !fs::exists(header_path) {
+		return;
+	}
+
+	impl*.reflect_inject.header_paths.emplace_back(header_path);
 }
 
 cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
@@ -922,8 +942,10 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		build_dylib.assert_symbol("cpp2b_detail_build");
 		build_dylib.assert_symbol("cpp2b_detail_build_binary_name");
+		build_dylib.assert_symbol("cpp2b_detail_build_cppfront_reflect_inject");
 
 		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
+		build_dylib.get_variable<decltype(cpp2b_detail_build_cppfront_reflect_inject&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_cppfront_reflect_inject&;
 
 		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&);
 		build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
