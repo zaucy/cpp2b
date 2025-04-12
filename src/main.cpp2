@@ -769,7 +769,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
-	(repo := GitHubRepo("hsutter/cppfront", "v0.8.0")) { 
+	(repo := GitHubRepo("hsutter/cppfront", "v0.8.1")) { 
 		repo.add("source");
 		repo.add("include");
 		exit_code = ensure_cppfront(repo.path());

@@ -35,7 +35,7 @@ set vs_tools_dir=%vs_install_dir%\VC\Tools\MSVC\%vs_tools_version%
 if exist .cache\repos\cppfront\ (
     @rem TODO - report which cppfront version is being used
 ) else (
-    git clone --quiet --branch=v0.8.0 --depth=1 https://github.com/hsutter/cppfront.git .cache/repos/cppfront 
+    git clone --quiet --branch=v0.8.1 --depth=1 https://github.com/hsutter/cppfront.git .cache/repos/cppfront 
 )
 
 call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" /no_logo

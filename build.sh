@@ -83,7 +83,7 @@ function ensure_gh_repo_subdir() {
     fi
 }
 
-ensure_gh_repo "hsutter/cppfront" "v0.8.0"
+ensure_gh_repo "hsutter/cppfront" "v0.8.1"
 ensure_gh_repo_subdir "hsutter/cppfront" "source"
 ensure_gh_repo_subdir "hsutter/cppfront" "include"
 
