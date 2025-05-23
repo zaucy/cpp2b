@@ -27,7 +27,7 @@ jobs:
       - run: .\build.cmd
       - uses: actions/upload-artifact@v4
         with:
-          name: cpp2b-windows-latest
+          name: cpp2b-windows-x86_64
           path: dist/debug/cpp2b.exe
           if-no-files-found: error
           retention-days: 0
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: cpp2b-windows-latest
+          name: cpp2b-windows-x86_64
       - run: .\cpp2b.exe build
       - run: Copy-Item .\.cache\cpp2\bin\cpp2b.exe -Destination .\cpp2b-self.exe
       - run: .\cpp2b-self.exe build
@@ -58,7 +58,7 @@ jobs:
       - run: ./build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: cpp2b-ubuntu-24.04
+          name: cpp2b-linux-x86_64
           path: dist/debug/cpp2b
           if-no-files-found: error
           retention-days: 0
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: cpp2b-ubuntu-24.04
+          name: cpp2b-linux-x86_64
       - run: chmod +x cpp2b
       - run: ./cpp2b build
       - run: ./.cache/cpp2/bin/cpp2b build
