@@ -63,6 +63,19 @@ jobs:
           if-no-files-found: error
           retention-days: 0
 
+  build-script-macos:
+    name: 'build.sh'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp2b-macos-latest
+          path: dist/debug/cpp2b
+          if-no-files-found: error
+          retention-days: 0
+
   build-self-linux:
     name: 'build self (linux)'
     needs: build-script-linux
