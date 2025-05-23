@@ -127,6 +127,11 @@ if not exist %cppfront% (
     popd
 )
 
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: failed to compile cppfront
+    exit %ERRORLEVEL%
+)
+
 if not exist "%root_dir%.cache/cpp2/source/src" ( mkdir "%root_dir%.cache/cpp2/source/src" )
 
 %cppfront% src/main.cpp2 -pure -import-std -l -format-colon-errors -o "%root_dir%.cache/cpp2/source/src/main.cpp"
