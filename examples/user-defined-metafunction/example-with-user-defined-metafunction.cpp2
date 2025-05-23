@@ -1,0 +1,10 @@
+named_coords: @example::printable type = {
+	x: f32;
+	y: f32;
+	name: std::string;
+}
+
+main: () = {
+	a: named_coords = (10, 42, "Zeke");
+	a.print_fields();
+}

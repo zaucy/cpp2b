@@ -53,7 +53,7 @@ public:
    * the top of the reflect.h2 header.
    */
   inline auto cppfront_reflect_inject(std::filesystem::path header_path) -> void {
-    return (*cpp2b_detail_build_cppfront_reflect_inject)(header_path);
+    return (*cpp2b_detail_build_cppfront_reflect_inject)(impl, header_path);
   }
 };
 } // namespace cpp2b

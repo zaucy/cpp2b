@@ -643,7 +643,7 @@ cpp2b_reflect_header_info: @struct type = {
 cpp2b_detail_build_impl: @struct type = {
 	public build_cpp2_dir: fs::path;
 	public bins: *std::vector<cpp2b_source_binary_info>;
-	public reflect_inject: cpp2b_reflect_header_info;
+	public reflect_inject: *cpp2b_reflect_header_info;
 }
 cpp2b_detail_build_binary_name: (
 	copy impl: *cpp2b_detail_build_impl,
@@ -677,7 +677,7 @@ cpp2b_detail_build_cppfront_reflect_inject: (
 		return;
 	}
 
-	impl*.reflect_inject.header_paths.emplace_back(header_path);
+	impl*.reflect_inject*.header_paths.emplace_back(header_path);
 }
 
 cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
@@ -772,6 +772,8 @@ full_build_info: @struct type = {
 
 	bin_results: std::vector<build_binary_result> = ();
 
+	reflect_inject: cpp2b_reflect_header_info = ();
+
 	empty: (this) -> bool = {
 		return bin_results.empty();
 	}
@@ -802,6 +804,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 	transpile_source_dir: fs::path = ".cache/cpp2/source";
 	cpp2_source_files: std::vector<fs::path> = ();
+	cpp2_header_files: std::vector<fs::path> = ();
 	cpp1_module_source_files: std::vector<fs::path> = ();
 	ec: std::error_code = ();
 
@@ -823,6 +826,15 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			}
 
 			cpp2_source_files.emplace_back(rel_path);
+		} else if p.extension() == ".h2" {
+			rel_path := fs::relative(p, fs::current_path());
+			for rel_path do(rel_path_comp) {
+				if rel_path_comp.string().starts_with(".") {
+					continue src_loop;
+				}
+			}
+
+			cpp2_header_files.emplace_back(rel_path);
 		} else if p.extension() == ".cppm" {
 			rel_path := fs::relative(p, fs::current_path());
 			for rel_path do(rel_path_comp) {
@@ -947,7 +959,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
 		build_dylib.get_variable<decltype(cpp2b_detail_build_cppfront_reflect_inject&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_cppfront_reflect_inject&;
 
-		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&);
+		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&, stuff.reflect_inject&);
 		build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
 	}
 
