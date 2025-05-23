@@ -46,7 +46,7 @@ jobs:
       - run: .\cpp2b-self.exe build
 
   build-script-linux:
-    name: 'build.sh'
+    name: 'build.sh (linux)'
     runs-on: ubuntu-24.04
     steps:
       - run: wget https://apt.llvm.org/llvm.sh
@@ -59,6 +59,21 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cpp2b-ubuntu-24.04
+          path: dist/debug/cpp2b
+          if-no-files-found: error
+          retention-days: 0
+
+  build-script-macos:
+    name: 'build.sh (macos)'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install llvm@19
+      - run: echo "$(brew --prefix llvm@19)/bin" >> $GITHUB_PATH
+      - run: CC=clang ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp2b-macos-latest
           path: dist/debug/cpp2b
           if-no-files-found: error
           retention-days: 0
