@@ -1,0 +1,5 @@
+example: namespace = {
+	printable: (inout t: meta::type_declaration) = {
+
+	}
+}
