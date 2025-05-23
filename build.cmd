@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 
 set root_dir=%~dp0
 set tools_dir=%~dp0.cache\tools\
@@ -21,24 +22,20 @@ for /f "usebackq tokens=*" %%i in (`%vswhere% -latest -products * -requires Micr
     set vs_install_dir=%%i
 )
 
-if exist "%vs_install_dir%\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt" (
-    set /p vs_tools_version=<"%vs_install_dir%\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
-)
+call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" /no_logo
 
-if "%vs_tools_version%"=="" (
-    echo ERROR: cannot find VC tools installed on your system
+if "%VCToolsInstallDir%"=="" (
+    echo ERROR: missing VCToolsInstallDir after running vsdevcmd.bat
     exit 1
 )
 
-set vs_tools_dir=%vs_install_dir%\VC\Tools\MSVC\%vs_tools_version%
+set vs_tools_dir=%VCToolsInstallDir%
 
 if exist .cache\repos\cppfront\ (
     @rem TODO - report which cppfront version is being used
 ) else (
     git clone --quiet --branch=v0.8.1 --depth=1 https://github.com/hsutter/cppfront.git .cache/repos/cppfront 
 )
-
-call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" /no_logo
 
 if not exist "%modules_dir%\std.ifc" (
     echo Compiling std module...
