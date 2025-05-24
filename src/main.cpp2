@@ -30,6 +30,27 @@ ensure_dir: (dir: fs::path) = {
 	}
 }
 
+expect_dir: (dir: fs::path) = {
+	status := fs::status(dir);
+
+	if status.type() != fs::file_type::directory {
+		log_error("missing expected directory {}", dir.generic_string());
+		log_error("make sure cpp2b is installed correctly");
+		std::abort();
+	}
+}
+
+expect_file: (f: fs::path) = {
+	status := fs::status(f);
+	type := status.type();
+
+	if type != fs::file_type::regular {
+		log_error("missing expected file {}", f.generic_string());
+		log_error("make sure cpp2b is installed correctly");
+		std::abort();
+	}
+}
+
 modules_dir: () = modules_dir(fs::current_path());
 modules_dir: (base: fs::path) -> fs::path = {
 	return base / ".cache" / "cpp2" / "mod";
@@ -117,18 +138,29 @@ bmi_extension: (compiler: cpp2b::compiler_type) -> std::string_view = {
 }
 
 generate_cpp2b_module: () = {
-	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.cppm.tpl";
-	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
+	using std::string_literals::_;
 
-	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.cppm.tpl"s;
 	cpp2b_module_template_stream: std::ifstream = (cpp2b_module_template_path);
+
+	if !cpp2b_module_template_stream {
+		log_error("failed to open {}", cpp2b_module_template_path.generic_string());
+		std::abort();
+	}
+
+	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
+	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
+
+	if !cpp2b_module_source_stream {
+		log_error("failed to open {}", cpp2b_module_source_path.generic_string());
+		std::abort();
+	}
 
 	vars: std::unordered_map<std::string, std::string> = (
 		std::pair("@CPP2B_PROJECT_ROOT@", fs::current_path().string())
 	);
 	
 	line: std::string = "";
-	assert(cpp2b_module_template_stream);
 	while std::getline(cpp2b_module_template_stream, line) {
 		for vars do (entry) {
 			var_name := entry.first;
@@ -149,7 +181,9 @@ generate_cpp2b_module: () = {
 }
 
 generate_cpp2b_build_module: () = {
-	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.build.cppm.tpl";
+	using std::string_literals::_;
+
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.build.cppm.tpl"s;
 	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b.build(module_source_extension(cpp2b::compiler()))$";
 
 	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
@@ -297,14 +331,53 @@ home_dir: () -> fs::path = {
 	}
 }
 
+share_dir_: fs::path = ();
 share_dir: () -> fs::path = {
-	return fs::path(cpp2b::install_dir()) / "share";
+	if share_dir_.empty() {
+		log_error("internal error - share dir was not setup");
+		std::abort();
+	}
+
+	return share_dir_;
+}
+
+setup_share_dir: () = {
+	exec_path := cpp2b::env::executable_path();
+	if exec_path.empty() {
+		log_error("failed to get executable path");
+		std::abort();
+	}
+	
+	if !exec_path.has_parent_path() {
+		log_error("invalid cpp2b install location");
+		std::abort();
+	}
+
+	share_dir_ = fs::weakly_canonical(exec_path.parent_path() / ".." / "share" / "cpp2b");
+
+	if fs::exists(share_dir_) {
+		return;
+	}
+	
+	// we are only checking for CPP2B_PROJECT_ROOT so we can run cpp2b with cpp2b
+	running_project_root := cpp2b::env::get_var("CPP2B_PROJECT_ROOT");
+	if !running_project_root {
+		log_error("failed to find {}", share_dir_.generic_string());
+		log_error("please make sure cpp2b is installed correctly");
+		std::abort();
+	}
+	
+	log_warning("using CPP2B_PROJECT_ROOT to find share directory");
+	share_dir_ = fs::path(running_project_root.value()) / "share" / "cpp2b";
+	log_warning("using share directory {}", share_dir_.generic_string());
+	share_dir_ = share_dir_.generic_string();
 }
 
 run_with_msvc_env_vars: (args) -> int = {
 	using std::views::drop;
+	using std::string_literals::_;
 
-	p: fs::path = fs::absolute(share_dir() / "run_with_msvc_env.cmd");
+	p: fs::path = fs::absolute(share_dir() / "run_with_msvc_env.cmd"s);
 
 	cmd_str: std::string = p.string() + " " + std::string(args[0]);
 	for args | drop(1) do (arg) {
@@ -325,6 +398,9 @@ run_with_args: (args) -> int = {
 
 main: (args) -> int = {
 	using std::views::drop;
+	using std::string_literals::_;
+
+	setup_share_dir();
 
 	argz: std::vector<std::string_view> = ();
 
@@ -371,7 +447,7 @@ main: (args) -> int = {
 			return run_with_args(argz);
 		}
 	}
-
+	
 	ensure_dir(".cache/cpp2/mod");
 	ensure_dir(".cache/cpp2/bin");
 	ensure_dir(".cache/cpp2/log");
@@ -1074,6 +1150,8 @@ subcommands: type = {
 			log_error("failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
 			return 1;
 		}
+
+		cpp2b::env::set_var("CPP2B_PROJECT_ROOT", root_dir*.generic_string());
 
 		run_forward_args: std::vector<std::string> = ();
 		target: std::optional<std::string> = ();
