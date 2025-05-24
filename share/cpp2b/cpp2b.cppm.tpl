@@ -4,6 +4,7 @@ module;
 #	include <Windows.h>
 #else
 #	include <stdlib.h>
+#	include <unistd.h>
 #endif
 
 export module cpp2b;
@@ -22,7 +23,6 @@ export namespace cpp2b {
 enum class platform { linux, macos, windows };
 enum class compiler_type { gcc, clang, msvc };
 enum class compilation_type { debug, optimized, fast };
-enum class build_type { local, development, release };
 
 constexpr auto host_platform() -> platform {
 #if defined(_WIN32)
@@ -51,17 +51,6 @@ constexpr auto compiler() -> compiler_type {
 #	error unknown compiler
 #endif
 }
-
-constexpr auto build() -> build_type {
-	return build_type::local;
-}
-
-constexpr auto install_dir() -> const std::string_view {
-	if constexpr (build() == build_type::local) {
-		return R"_____cpp2b_____(@CPP2B_PROJECT_ROOT@)_____cpp2b_____";
-	}
-}
-
 } // namespace cpp2b
 
 export namespace cpp2b::env {
@@ -183,4 +172,47 @@ public:
 		return iterator(nullptr);
 	}
 };
+
+std::filesystem::path executable_path() {
+	static std::string executable_path_str;
+
+	if(!executable_path_str.empty()) {
+		return executable_path_str;
+	}
+
+	auto size = 260;
+	auto buffer = std::vector<char>(size);
+
+#if defined(_WIN32)
+	for (;;) {
+		DWORD len = GetModuleFileNameA(NULL, buffer.data(), size);
+		if (len == 0) {
+			executable_path_str = {};
+			return executable_path_str;
+		} else if (len < size - 1) {
+			executable_path_str = std::string(buffer.data(), len);
+			return executable_path_str;
+		}
+
+		size += 260;
+		buffer.resize(size);
+	}
+#elif defined(__linux__)
+	for (;;) {
+		ssize_t len = readlink("/proc/self/exe", buffer.data(), size - 1);
+		if (len < 0) {
+			executable_path_str = {};
+			return executable_path_str;
+		} else if (len < size - 1) {
+			executable_path_str = std::string(buffer.data(), len);
+			return executable_path_str;
+		}
+
+		size += 260;
+		buffer.resize(size);
+	}
+#else
+#	error unhandled executable_path platform
+#endif
+}
 }

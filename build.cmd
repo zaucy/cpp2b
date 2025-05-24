@@ -62,7 +62,7 @@ setlocal enableextensions disabledelayedexpansion
 set "search=@CPP2B_PROJECT_ROOT@"
 set "replace=%root_dir%"
 
-set "inputFile=%root_dir%share\cpp2b.cppm.tpl"
+set "inputFile=%root_dir%share\cpp2b\cpp2b.cppm.tpl"
 set "outputFile=%root_dir%.cache\cpp2\source\_build\cpp2b.ixx"
 
 for /f "delims=" %%i in ('type "%inputFile%"') do (
