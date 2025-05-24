@@ -199,7 +199,7 @@ std::filesystem::path executable_path() {
 	}
 #elif defined(__linux__)
 	for (;;) {
-		ssize_t len = readlink("/proc/self/exe", buf.data(), size - 1);
+		ssize_t len = readlink("/proc/self/exe", buffer.data(), size - 1);
 		if (len < 0) {
 			executable_path_str = {};
 			return executable_path_str;
