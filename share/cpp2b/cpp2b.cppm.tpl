@@ -4,6 +4,7 @@ module;
 #	include <Windows.h>
 #else
 #	include <stdlib.h>
+#	include <unistd.h>
 #endif
 
 export module cpp2b;
@@ -179,13 +180,27 @@ std::filesystem::path executable_path() {
 		return executable_path_str;
 	}
 
-	if constexpr(host_platform() == platform::windows) {
-		auto size = 260;
-		auto buffer = std::vector<char>(size);
+	auto size = 260;
+	auto buffer = std::vector<char>(size);
 
+	if constexpr(host_platform() == platform::windows) {
 		for (;;) {
 			DWORD len = GetModuleFileNameA(NULL, buffer.data(), size);
 			if (len == 0) {
+				executable_path_str = {};
+				return executable_path_str;
+			} else if (len < size - 1) {
+				executable_path_str = std::string(buffer.data(), len);
+				return executable_path_str;
+			}
+
+			size += 260;
+			buffer.resize(size);
+		}
+	} else if constexpr(host_platform() == platform::linux) {
+		for (;;) {
+			ssize_t len = readlink("/proc/self/exe", buf.data(), size - 1);
+			if (len < 0) {
 				executable_path_str = {};
 				return executable_path_str;
 			} else if (len < size - 1) {
