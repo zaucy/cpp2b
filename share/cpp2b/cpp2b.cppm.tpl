@@ -180,7 +180,7 @@ std::filesystem::path executable_path() {
 	}
 
 	if constexpr(host_platform() == platform::windows) {
-		auto size = MAX_PATH;
+		auto size = 260;
 		auto buffer = std::vector<char>(size);
 
 		for (;;) {
@@ -193,7 +193,7 @@ std::filesystem::path executable_path() {
 				return executable_path_str;
 			}
 
-			size *= 2;
+			size += 260;
 			buffer.resize(size);
 		}
 	}
