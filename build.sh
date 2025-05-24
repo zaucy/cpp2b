@@ -197,6 +197,7 @@ $CPPFRONT src/main.cpp2 -pure -import-std -l -format-colon-errors -o "$ROOT_DIR/
 
 log_info "compiling..."
 $CPP2B_COMPILER                                   \
+    -g                                            \
     -stdlib=libc++                                \
     "$MODULES_DIR/cpp2b.pcm"                      \
     "$MODULES_DIR/dylib.pcm"                      \

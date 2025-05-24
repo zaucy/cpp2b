@@ -11,4 +11,4 @@ cd $ROOT_DIR
 ./build.sh
 cp dist/debug/cpp2b ~/.local/bin/cpp2b
 rm -rf ~/.local/share/cpp2b
-cp -r share ~/.local/share
+cp -r share/cpp2b ~/.local/share
