@@ -10,7 +10,7 @@ env:
   # https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
   LLVM_VERSION: '18.1.3'
   CPP2B_LIBCXX_BUILD_ROOT: '/tmp/llvm-project/build'
-  CPP2B_PROJECT_ROOT: '.'
+  CPP2B_PROJECT_ROOT: './'
 
 jobs:
   typos-check:
