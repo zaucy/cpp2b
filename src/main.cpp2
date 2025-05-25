@@ -30,6 +30,27 @@ ensure_dir: (dir: fs::path) = {
 	}
 }
 
+expect_dir: (dir: fs::path) = {
+	status := fs::status(dir);
+
+	if status.type() != fs::file_type::directory {
+		log_error("missing expected directory {}", dir.generic_string());
+		log_error("make sure cpp2b is installed correctly");
+		std::exit(1);
+	}
+}
+
+expect_file: (f: fs::path) = {
+	status := fs::status(f);
+	type := status.type();
+
+	if type != fs::file_type::regular {
+		log_error("missing expected file {}", f.generic_string());
+		log_error("make sure cpp2b is installed correctly");
+		std::exit(1);
+	}
+}
+
 modules_dir: () = modules_dir(fs::current_path());
 modules_dir: (base: fs::path) -> fs::path = {
 	return base / ".cache" / "cpp2" / "mod";
@@ -56,7 +77,7 @@ find_closest_file: (filename, base: fs::path) -> std::optional<fs::path> = {
 expect: <T>(move opt: std::optional<T>, message) -> T = {
 	if !opt {
 		log_error("{}", message);
-		std::abort();
+		std::exit(1);
 	}
 
 	return opt*;
@@ -78,7 +99,7 @@ GitHubRepo: type = {
 		cmd_str: std::string = "git -C (path().string())$ " + args;
 		std::println("SUBCOMMAND: {}", cmd_str);
 		if std::system(cmd_str.c_str()) != 0 {
-			std::abort();
+			std::exit(1);
 		}
 	}
 
@@ -106,29 +127,40 @@ module_source_extension: (compiler: cpp2b::compiler_type) -> std::string_view = 
 	if compiler == cpp2b::compiler_type::msvc  { return ".ixx"; }
 	if compiler == cpp2b::compiler_type::clang { return ".cppm"; }
 	if compiler == cpp2b::compiler_type::gcc   { return ".cxx"; }
-	std::abort();
+	std::exit(1);
 }
 
 bmi_extension: (compiler: cpp2b::compiler_type) -> std::string_view = {
 	if compiler == cpp2b::compiler_type::msvc  { return ".ifc"; }
 	if compiler == cpp2b::compiler_type::clang { return ".pcm"; }
 	if compiler == cpp2b::compiler_type::gcc   { return ".pcm"; } // TODO: Is this right?
-	std::abort();
+	std::exit(1);
 }
 
 generate_cpp2b_module: () = {
-	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.cppm.tpl";
-	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
+	using std::string_literals::_;
 
-	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.cppm.tpl"s;
 	cpp2b_module_template_stream: std::ifstream = (cpp2b_module_template_path);
+
+	if !cpp2b_module_template_stream {
+		log_error("failed to open {}", cpp2b_module_template_path.generic_string());
+		std::exit(1);
+	}
+
+	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b(module_source_extension(cpp2b::compiler()))$";
+	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
+
+	if !cpp2b_module_source_stream {
+		log_error("failed to open {}", cpp2b_module_source_path.generic_string());
+		std::exit(1);
+	}
 
 	vars: std::unordered_map<std::string, std::string> = (
 		std::pair("@CPP2B_PROJECT_ROOT@", fs::current_path().string())
 	);
 	
 	line: std::string = "";
-	assert(cpp2b_module_template_stream);
 	while std::getline(cpp2b_module_template_stream, line) {
 		for vars do (entry) {
 			var_name := entry.first;
@@ -149,7 +181,9 @@ generate_cpp2b_module: () = {
 }
 
 generate_cpp2b_build_module: () = {
-	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.build.cppm.tpl";
+	using std::string_literals::_;
+
+	cpp2b_module_template_path: fs::path = share_dir() / "cpp2b.build.cppm.tpl"s;
 	cpp2b_module_source_path: fs::path = ".cache/cpp2/source/_build/cpp2b.build(module_source_extension(cpp2b::compiler()))$";
 
 	cpp2b_module_source_stream: std::ofstream = (cpp2b_module_source_path);
@@ -194,7 +228,7 @@ get_system_modules_dir: (compiler: cpp2b::compiler_type) -> fs::path = {
 	if compiler == cpp2b::compiler_type::msvc  { return get_vs_tools_dir() / "modules"; }
 	if compiler == cpp2b::compiler_type::clang { return get_llvm_root() / "share" / "libc++" / "v1"; }
 	log_error("cannot find system cpp20 modules directory");
-	std::abort();
+	std::exit(1);
 }
 
 ensure_system_module: (name: std::string) = {
@@ -262,7 +296,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	     if compiler == cpp2b::compiler_type::msvc { cmd_str = cl_build_cpp1_module_cmd(name, sources, module_deps, bmi); }
 	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_cpp1_module_cmd("clang-19", name, sources, module_deps, bmi); }
 	else if compiler == cpp2b::compiler_type::gcc { cmd_str = unix_build_cpp1_module_cmd("gcc", name, sources, module_deps, bmi); }
-	else { log_error("unsupported compiler"); std::abort(); }
+	else { log_error("unsupported compiler"); std::exit(1); }
 
 	cmd_str += cmd_log_output(fs::absolute(log_path));
 
@@ -277,7 +311,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	if exit_code != 0 {
 		log_error("failed to compile module {}", name);
 		print_log_file(log_path);
-		std::abort();
+		std::exit(1);
 	}
 }
 
@@ -297,14 +331,53 @@ home_dir: () -> fs::path = {
 	}
 }
 
+share_dir_: fs::path = ();
 share_dir: () -> fs::path = {
-	return fs::path(cpp2b::install_dir()) / "share";
+	if share_dir_.empty() {
+		log_error("internal error - share dir was not setup");
+		std::exit(1);
+	}
+
+	return share_dir_;
+}
+
+setup_share_dir: () = {
+	exec_path := cpp2b::env::executable_path();
+	if exec_path.empty() {
+		log_error("failed to get executable path");
+		std::exit(1);
+	}
+	
+	if !exec_path.has_parent_path() {
+		log_error("invalid cpp2b install location");
+		std::exit(1);
+	}
+
+	share_dir_ = fs::weakly_canonical(exec_path.parent_path() / ".." / "share" / "cpp2b");
+
+	if fs::exists(share_dir_) {
+		return;
+	}
+	
+	// we are only checking for CPP2B_PROJECT_ROOT so we can run cpp2b with cpp2b
+	running_project_root := cpp2b::env::get_var("CPP2B_PROJECT_ROOT");
+	if !running_project_root {
+		log_error("failed to find {}", share_dir_.generic_string());
+		log_error("please make sure cpp2b is installed correctly");
+		std::exit(1);
+	}
+	
+	log_warning("using CPP2B_PROJECT_ROOT to find share directory");
+	share_dir_ = fs::absolute(fs::path(running_project_root.value())) / "share" / "cpp2b";
+	log_warning("using share directory {}", share_dir_.generic_string());
+	share_dir_ = share_dir_.generic_string();
 }
 
 run_with_msvc_env_vars: (args) -> int = {
 	using std::views::drop;
+	using std::string_literals::_;
 
-	p: fs::path = fs::absolute(share_dir() / "run_with_msvc_env.cmd");
+	p: fs::path = fs::absolute(share_dir() / "run_with_msvc_env.cmd"s);
 
 	cmd_str: std::string = p.string() + " " + std::string(args[0]);
 	for args | drop(1) do (arg) {
@@ -325,6 +398,9 @@ run_with_args: (args) -> int = {
 
 main: (args) -> int = {
 	using std::views::drop;
+	using std::string_literals::_;
+
+	setup_share_dir();
 
 	argz: std::vector<std::string_view> = ();
 
@@ -371,7 +447,7 @@ main: (args) -> int = {
 			return run_with_args(argz);
 		}
 	}
-
+	
 	ensure_dir(".cache/cpp2/mod");
 	ensure_dir(".cache/cpp2/bin");
 	ensure_dir(".cache/cpp2/log");
@@ -506,7 +582,7 @@ ensure_cppfront: (cppfront_source: fs::path) -> int = {
 		}
 
 		log_error("unknown compiler");
-		std::abort();
+		std::exit(1);
 	}
 
 	return 0;
@@ -624,7 +700,7 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_binary_cmd(info, bin_outpath); }
 	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_binary_cmd("clang-19", info, bin_outpath); }
 	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_binary_cmd("gcc", info, bin_outpath); }
-	else { log_error("Unsupported compiler"); std::abort(); }
+	else { log_error("Unsupported compiler"); std::exit(1); }
 
 	cmd_str += " (cmd_log_output(fs::absolute(log_path)))$";
 
@@ -717,7 +793,7 @@ build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_build_script_cmd(info, bin_outpath); }
 	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_build_script_cmd("clang-19", info, bin_outpath); }
 	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_build_script_cmd("gcc", info, bin_outpath); }
-	else { log_error("Unsupported compiler"); std::abort(); }
+	else { log_error("Unsupported compiler"); std::exit(1); }
 
 	cmd_str += " (cmd_log_output(fs::relative(log_path)))$";
 
@@ -740,7 +816,7 @@ print_log_file: (p: fs::path) -> void = {
 assert_symbol: (d: dylib, symbol) = {
 	if !d.has_symbol(symbol) {
 		log_error("missing symbol '{}'", symbol);
-		std::abort();
+		std::exit(1);
 	}
 }
 
@@ -876,12 +952,12 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		if result.module_name.empty() {
 			log_error("cannot find exported module in {}", src_file.generic_string());
-			std::abort();
+			std::exit(1);
 		}
 
 		if !result.exported {
 			log_error("module {} in {} must be exported", result.module_name, src_file.generic_string());
-			std::abort();
+			std::exit(1);
 		}
 		
 		build_cpp1_module(result.module_name, :std::vector=(src_file), result.imports);
@@ -1025,6 +1101,8 @@ subcommands: type = {
 			return 1;
 		}
 
+		cpp2b::env::set_var("CPP2B_PROJECT_ROOT", root_dir*.generic_string());
+
 		targets: std::vector<std::string> = ();
 		for args do(arg: std::string_view) {
 			if arg.starts_with("-") {
@@ -1074,6 +1152,8 @@ subcommands: type = {
 			log_error("failed to find cpp2b project root directory - make sure you have build.cpp2 in the root of your project");
 			return 1;
 		}
+
+		cpp2b::env::set_var("CPP2B_PROJECT_ROOT", root_dir*.generic_string());
 
 		run_forward_args: std::vector<std::string> = ();
 		target: std::optional<std::string> = ();

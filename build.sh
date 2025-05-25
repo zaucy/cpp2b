@@ -181,7 +181,7 @@ if [ -f "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm" ]; then
     rm "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
 fi
 
-cat "$ROOT_DIR/share/cpp2b.cppm.tpl" | sed "s\`@CPP2B_PROJECT_ROOT@\`$ROOT_DIR\`g" > "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
+cat "$ROOT_DIR/share/cpp2b/cpp2b.cppm.tpl" | sed "s\`@CPP2B_PROJECT_ROOT@\`$ROOT_DIR\`g" > "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
 
 $CPP2B_COMPILER                                       \
     -stdlib=libc++                                    \
@@ -197,6 +197,7 @@ $CPPFRONT src/main.cpp2 -pure -import-std -l -format-colon-errors -o "$ROOT_DIR/
 
 log_info "compiling..."
 $CPP2B_COMPILER                                   \
+    -g                                            \
     -stdlib=libc++                                \
     "$MODULES_DIR/cpp2b.pcm"                      \
     "$MODULES_DIR/dylib.pcm"                      \
