@@ -368,7 +368,7 @@ setup_share_dir: () = {
 	}
 	
 	log_warning("using CPP2B_PROJECT_ROOT to find share directory");
-	share_dir_ = fs::path(running_project_root.value()) / "share" / "cpp2b";
+	share_dir_ = fs::absolute(fs::path(running_project_root.value())) / "share" / "cpp2b";
 	log_warning("using share directory {}", share_dir_.generic_string());
 	share_dir_ = share_dir_.generic_string();
 }
