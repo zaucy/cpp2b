@@ -1101,6 +1101,8 @@ subcommands: type = {
 			return 1;
 		}
 
+		cpp2b::env::set_var("CPP2B_PROJECT_ROOT", root_dir*.generic_string());
+
 		targets: std::vector<std::string> = ();
 		for args do(arg: std::string_view) {
 			if arg.starts_with("-") {
