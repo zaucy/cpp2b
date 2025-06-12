@@ -2,6 +2,7 @@ import std.compat;
 import cpp2b;
 import dylib;
 import nlohmann.json;
+import xxh3;
 
 fs: namespace == std::filesystem;
 json: type == nlohmann::json;
@@ -784,9 +785,14 @@ unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_buil
 build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 	compiler :== cpp2b::compiler();
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
+	bin_cache_file_path: fs::path = bin_outpath.generic_string() + ".cpp2bcache";
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
 	ensure_dir(log_path.parent_path());
 	ensure_dir(bin_outpath.parent_path());
+
+	if fs::exists(bin_outpath) && fs::exists(bin_cache_file_path) {
+		bin_cache_file: std::fstream = (bin_cache_file_path, std::ios::binary);
+	}
 
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "";
@@ -841,7 +847,19 @@ contains_target: (targets, value: std::string) -> bool = {
 	return false;
 }
 
+hash_file: (p: fs::path) -> u64 = {
+	f: std::ifstream = (p, std::ios::binary | std::ios::ate);
+	size: size_t = unchecked_cast<size_t>(f.tellg());
+	f.seekg(0, std::ios::beg);
+	buffer: std::vector<char> = ();
+	buffer.resize(size);
+	f.read(buffer.data(), size);
+	if f.fail() { return 0; }
+	return XXH3_64bits(buffer.data(), buffer.size());
+}
+
 do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_code: int) = {
+	cwd := fs::current_path();
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
@@ -869,9 +887,9 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		warn_if_error("remove", p, ec);
 	}
 
-	src_loop: for fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::follow_directory_symlink) do(p: fs::path) {
+	src_loop: for fs::recursive_directory_iterator(cwd, fs::directory_options::follow_directory_symlink) do(p: fs::path) {
 		if p.extension() == ".cpp2" {
-			rel_path := fs::relative(p, fs::current_path());
+			rel_path := fs::relative(p, cwd);
 			for rel_path do(rel_path_comp) {
 				if rel_path_comp.string().starts_with(".") {
 					continue src_loop;
@@ -899,13 +917,76 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 	transpile_futures: std::vector<std::future<transpile_cpp2_result>> = ();
 	cpp2b_parse_futures: std::vector<std::future<cpp2b_source_info>> = ();
+	file_hash_futures: std::unordered_map<fs::path, std::future<u64>> = ();
+	file_hashes: std::unordered_map<fs::path, u64> = ();
+	prev_file_hashes: std::unordered_map<fs::path, u64> = ();
+
 	transpile_futures.reserve(cpp2_source_files.size());
 	cpp2b_parse_futures.reserve(cpp2_source_files.size());
-
+	file_hash_futures.reserve(cpp2_source_files.size());
+	file_hashes.reserve(cpp2_source_files.size());
+	prev_file_hashes.reserve(cpp2_source_files.size());
 
 	for cpp2_source_files do(src_file: fs::path) {
+		file_hash_futures.insert(std::make_pair(
+			src_file,
+			std::async(std::launch::async, hash_file, src_file)
+		));
 		transpile_futures.emplace_back(std::async(std::launch::async, transpile_cpp2, src_file, transpile_source_dir));
 		cpp2b_parse_futures.emplace_back(std::async(std::launch::async, cpp2b_parse_source, src_file));
+	}
+
+	for file_hash_futures do(inout entry) {
+		p := entry.first;
+		hash_fut := entry.second&;
+		hash := hash_fut*.get();
+		file_hashes.insert(std::make_pair(p, hash));
+	}
+
+	hash_data_file: std::fstream = (".cache/cpp2/.hash", std::ios::binary | std::ios::in);
+
+	while hash_data_file {
+		path_length: u16 = 0;
+		hash_data_file >> path_length;
+		if !hash_data_file { break; }
+
+		p: std::string = "";
+		p.resize(path_length);
+		hash_data_file.read(p.data(), path_length);
+		if !hash_data_file { break; }
+
+		path_hash: u64 = 0;
+		hash_data_file.read(reinterpret_cast<*char>(path_hash&), 8);
+		if !hash_data_file { break; }
+
+		prev_file_hashes[fs::path(p)] = path_hash;
+	}
+
+	for file_hashes do(entry) {
+		p := entry.first;
+		hash := entry.second;
+
+		if prev_file_hashes.contains(p) {
+			if prev_file_hashes.at(p) == hash {
+				log_info("{} no change", p.generic_string());
+			} else {
+				log_info("{} changed", p.generic_string());
+			}
+		} else {
+			log_info("new file {}", p.generic_string());
+		}
+	}
+	
+	hash_data_file.close();
+	hash_data_file.open(".cache/cpp2/.hash", std::ios::binary | std::ios::out | std::ios::trunc);
+
+	for file_hashes do(inout entry) {
+		p := entry.first.generic_string();
+		hash := entry.second;
+
+		hash_data_file << unchecked_cast<u16>(p.size());
+		hash_data_file.write(p.data(), p.size());
+		hash_data_file.write(reinterpret_cast<*char>(hash&), 8);
 	}
 
 	for transpile_futures do(inout fut) {
@@ -945,7 +1026,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		std::pair("std", true),
 		std::pair("std.compat", true),
 	);
-
 
 	for cpp1_module_source_files do(src_file: fs::path) {
 		result := cpp2b_parse_cpp1_module_statements(std::ifstream(src_file));

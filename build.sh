@@ -161,6 +161,21 @@ if ! [ -f $MODULES_DIR/dylib.pcm ]; then
     cd $ROOT_DIR
 fi
 
+if ! [ -f $MODULES_DIR/xxh3.pcm ]; then
+    log_info "compiling xxh3 module..."
+
+    $CPP2B_COMPILER                        \
+        -stdlib=libc++                       \
+        -std=c++23                           \
+        -fexperimental-library               \
+        -isystem $LIBCXX_INCLUDE_DIR/c++/v1  \
+        -fprebuilt-module-path=$MODULES_DIR  \
+        "$ROOT_DIR/src/xxh3.cppm"           \
+        --precompile -o $MODULES_DIR/xxh3.pcm
+
+    cd $ROOT_DIR
+fi
+
 if ! [ -f $MODULES_DIR/nlohmann.json.pcm ]; then
     log_info "compiling nlohmann.json module..."
 
