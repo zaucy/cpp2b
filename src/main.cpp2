@@ -22,6 +22,10 @@ log_success: <Args...: type>(fmt: std::format_string<Args...>, forward args...: 
 	std::println("\033[0;32mSUCCESS\033[0m: {}", std::format(fmt, args...));
 }
 
+git_clone_url_matcher: @regex type = {
+    regex := R"(^(?:git@|ssh://git@|https://|http://|git://)?([^:/]+)[:/]{1,2}([^/]+)/([^/]+?)(?:\.git)?$)";
+}
+
 ensure_dir: (dir: fs::path) = {
 	status := fs::status(dir);
 
@@ -725,10 +729,71 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	return result;
 }
 
+git_repo_clone_result: @struct type = {
+	operations: std::string = "";
+	exit_code: int = ();
+	duration: std::chrono::milliseconds = ();
+	log_path: fs::path = ();
+}
+
+git_clone_task: (repo: std::shared_ptr<cpp2b_detail_git_repo_impl>) -> git_repo_clone_result = {
+	result: git_repo_clone_result = ();
+	
+	repo_path := cpp2b_detail_git_repo_path(repo.get());
+	log_path := fs::absolute(std::format(
+		".cache/cpp2/log/git_clone/{}/{}/{}.log",
+		repo*.clone_host,
+		repo*.clone_owner_dirname,
+		repo*.clone_repo_dirname,
+	));
+
+	result.log_path = log_path;
+
+	append_operation :=: (op: std::string) = {
+		if !result&$*.operations.empty() {
+			result&$*.operations += std::format(" + {}", op);
+		} else {
+			result&$*.operations += op;
+		}
+	};
+
+	if !(repo_path / ".git").fs::exists() {
+		ensure_dir(log_path.parent_path());
+
+		append_operation("clone");
+
+		cmd_str := std::format(
+			"git clone {} {} {}",
+			repo*.clone_url,
+			fs::relative(repo_path).generic_string(),
+			cmd_log_output(fs::relative(log_path)),
+		);
+		clone_duration: std::chrono::milliseconds;
+		result.exit_code = measure(:()=std::system(cmd_str$.c_str()), out clone_duration);
+		result.duration += clone_duration;
+	}
+
+	if result.exit_code != 0 { return result; }
+
+	append_operation("checkout");
+
+	cmd_str := std::format(
+		"git -C {} checkout {} {}",
+		fs::relative(repo_path).generic_string(),
+		repo*.commitish,
+		cmd_log_output(fs::relative(log_path)),
+	);
+	checkout_duration: std::chrono::milliseconds;
+	result.exit_code = measure(:()=std::system(cmd_str$.c_str()), out checkout_duration);
+	result.duration += checkout_duration;
+
+	return result;
+}
 
 cpp2b_detail_build_impl: @struct type = {
 	public build_cpp2_dir: fs::path;
 	public bins: *std::vector<cpp2b_source_binary_info>;
+	public git_repos: std::vector<std::shared_ptr<cpp2b_detail_git_repo_impl>>;
 }
 cpp2b_detail_build_binary_name: (
 	copy impl: *cpp2b_detail_build_impl,
@@ -748,6 +813,54 @@ cpp2b_detail_build_binary_name: (
 	}
 
 	bin*.preferred_name = (build_cpp2_dir / new_binary_name).generic_string();
+}
+
+cpp2b_detail_git_repo_impl: @struct type = {
+	public clone_url: std::string = "";
+	public commitish: std::string = "";
+
+	public clone_host: std::string = "";
+	public clone_owner_dirname: std::string = "";
+	public clone_repo_dirname: std::string = "";
+}
+
+cpp2b_detail_cpp1_module_impl: @struct type = {
+	public source_path: fs::path = ();
+	public include_directories: std::vector<fs::path> = ();
+	public system_include_directories: std::vector<fs::path> = ();
+}
+
+cpp2b_detail_git_clone: (
+	copy impl: *cpp2b_detail_build_impl,
+	copy clone_url: std::string_view,
+	copy commitish: std::string_view,
+) -> std::shared_ptr<cpp2b_detail_git_repo_impl> = {
+	repo_impl := cpp2::shared.new<cpp2b_detail_git_repo_impl>();
+
+	repo_impl*.clone_url = clone_url;
+	repo_impl*.commitish = commitish;
+
+
+	m: git_clone_url_matcher = ();
+	result := m.regex.match(repo_impl*.clone_url);
+	
+	repo_impl*.clone_host = result.group(1);
+	repo_impl*.clone_owner_dirname = result.group(2);
+	repo_impl*.clone_repo_dirname = result.group(3);
+
+	impl*.git_repos.emplace_back(repo_impl);
+
+	return repo_impl;
+}
+
+cpp2b_detail_git_repo_path: (
+	copy impl: *const cpp2b_detail_git_repo_impl,
+) -> fs::path = {
+	return fs::absolute(std::format(
+		".cache/cpp2/repos/{}/{}",
+		impl*.clone_owner_dirname,
+		impl*.clone_repo_dirname,
+	));
 }
 
 cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
@@ -847,6 +960,14 @@ full_build_info: @struct type = {
 	}
 }
 
+cpp2b_detail_create_cpp1_module: (
+	copy impl: *cpp2b_detail_build_impl
+) -> std::shared_ptr<cpp2b_detail_cpp1_module_impl> = {
+	cpp1_module_impl := cpp2::shared.new<cpp2b_detail_cpp1_module_impl>();
+	
+	return cpp1_module_impl;
+}
+
 contains_target: (targets, value: std::string) -> bool = {
 	for targets do(target: std::string) {
 		if target == value { return true; }
@@ -893,15 +1014,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			}
 
 			cpp2_source_files.emplace_back(rel_path);
-		} else if p.extension() == ".cppm" {
-			rel_path := fs::relative(p, fs::current_path());
-			for rel_path do(rel_path_comp) {
-				if rel_path_comp.string().starts_with(".") {
-					continue src_loop;
-				}
-			}
-
-			cpp1_module_source_files.emplace_back(rel_path);
 		}
 	}
 
@@ -994,6 +1106,8 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			std::async(std::launch::async, build_build_script, build_script)
 		);
 	}
+
+	git_repos: std::vector<std::shared_ptr<cpp2b_detail_git_repo_impl>> = ();
 	
 	for build_script_futures do(inout p) {
 		build_result := p.second.get();
@@ -1012,11 +1126,49 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		build_dylib.assert_symbol("cpp2b_detail_build");
 		build_dylib.assert_symbol("cpp2b_detail_build_binary_name");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_define");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_include_directory");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_source_path");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_system_include_directory");
+		build_dylib.assert_symbol("cpp2b_detail_create_cpp1_module");
+		build_dylib.assert_symbol("cpp2b_detail_git_clone");
+		build_dylib.assert_symbol("cpp2b_detail_git_repo_path");
 
 		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
+		build_dylib.get_variable<decltype(cpp2b_detail_create_cpp1_module&)>("cpp2b_detail_create_cpp1_module") = cpp2b_detail_create_cpp1_module&;
+		build_dylib.get_variable<decltype(cpp2b_detail_git_clone&)>("cpp2b_detail_git_clone") = cpp2b_detail_git_clone&;
+		build_dylib.get_variable<decltype(cpp2b_detail_git_repo_path&)>("cpp2b_detail_git_repo_path") = cpp2b_detail_git_repo_path&;
 
-		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&);
+		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&, :std::vector<std::shared_ptr<cpp2b_detail_git_repo_impl>>=());
 		build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
+
+		git_repos.insert(git_repos.end(), b.git_repos.begin(), b.git_repos.end());
+	}
+
+	git_repo_futures: std::vector<std::future<git_repo_clone_result>> = ();
+	git_repo_futures.reserve(git_repos.size());
+	
+	if !git_repos.empty() {
+		log_info("checking out {0} git repo(s)...", git_repos.size());
+	}
+
+	for git_repos do(git_repo) {
+		git_repo_futures.emplace_back(
+			std::async(std::launch::async, git_clone_task, git_repo)
+		);
+	}
+
+	for std::ranges::views::zip(git_repo_futures, git_repos) do(copy p) {
+		clone_res := std::get<0>(p).get();
+		git_repo := std::get<1>(p);
+
+		if clone_res.exit_code != 0 {
+			log_error("failed to clone repo - exit code {}", clone_res.exit_code);
+			print_log_file(clone_res.log_path);
+			continue;
+		}
+
+		log_info("git {} for {} {} ({}ms)", clone_res.operations, git_repo*.clone_url, git_repo*.commitish, clone_res.duration.count());
 	}
 
 	for stuff.mods do(mod) {
@@ -1027,7 +1179,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	if !targets.empty() {
 		bin_targets.reserve(targets.size());
 	}
-
 
 	bin_futures: std::vector<std::pair<std::reference_wrapper<cpp2b_source_binary_info>, std::future<build_binary_result>>> = ();
 	bin_futures.reserve(stuff.bins.size());
