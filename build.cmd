@@ -22,12 +22,14 @@ for /f "usebackq tokens=*" %%i in (`%vswhere% -latest -products * -requires Micr
     set vs_install_dir=%%i
 )
 
-call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" /no_logo
+call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo -vcvars_ver=14.42
 
 if "%VCToolsInstallDir%"=="" (
     echo ERROR: missing VCToolsInstallDir after running vsdevcmd.bat
     exit 1
 )
+
+echo INFO: using vs tools %VCToolsVersion%
 
 set vs_tools_dir=%VCToolsInstallDir%
 
