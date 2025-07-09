@@ -428,7 +428,21 @@ main: (args) -> int = {
 		if !has_msvc_env_vars() {
 			return run_with_msvc_env_vars(argz);
 		} else {
-			log_info("using vs tools {}", cpp2b::env::get_var("VCToolsVersion").expect("msvc env internal error"));
+			vc_tools_version := cpp2b::env::get_var("VCToolsVersion").expect("msvc env internal error");
+
+			after_major_index := vc_tools_version.find(".");
+			after_minor_index := vc_tools_version.find(".", after_major_index + 1);
+
+			major_version := vc_tools_version.substr(0, after_major_index).std::stoi();
+			minor_version := vc_tools_version.substr(after_major_index + 1, after_minor_index - after_major_index - 1).std::stoi();
+
+			if major_version == 14 && minor_version >= 44 {
+				log_error("vs tools version {} is unsupported", vc_tools_version);
+				log_error("please install vs tools 14.42 or 14.43");
+				std::exit(1);
+			}
+
+			log_info("using vs tools {}", vc_tools_version);
 
 			if !fs::exists(".cache/cpp2/.env") {
 				log_info("saving environment variables");

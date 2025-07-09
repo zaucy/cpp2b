@@ -22,7 +22,7 @@ jobs:
 
   build-script-windows:
     name: 'build.cmd'
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
       - run: .\build.cmd
@@ -36,7 +36,7 @@ jobs:
   build-self-windows:
     name: 'build self (windows)'
     needs: build-script-windows
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
