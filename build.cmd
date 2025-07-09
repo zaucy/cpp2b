@@ -42,6 +42,8 @@ if not defined chosen_version (
     exit 1
 )
 
+echo INFO: using chosen version !chosen_version!
+
 call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo -vcvars_ver=!chosen_version!
 
 if "%VCToolsInstallDir%"=="" (
@@ -186,6 +188,8 @@ for /f "tokens=1-3 delims=." %%a in ("!ver!") do (
     set "minor=%%b"
     set "patch=%%c"
 )
+
+echo "chosen=!chosen_version! current=!ver!"
 
 if "%major%"=="14" (
     set /a m=!minor!
