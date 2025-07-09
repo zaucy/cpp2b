@@ -51,6 +51,11 @@ CPP2B_BUILD_DECL_FN(
 );
 
 CPP2B_BUILD_DECL_FN(
+  cpp2b_detail_create_cpp1_module,
+  std::shared_ptr<cpp2b_detail_cpp1_module_impl>(cpp2b_detail_build_impl* impl)
+);
+
+CPP2B_BUILD_DECL_FN(
   cpp2b_detail_cpp1_module_source_path,
   void(cpp2b_detail_cpp1_module_impl* impl, std::filesystem::path p)
 );
@@ -72,11 +77,6 @@ CPP2B_BUILD_DECL_FN(
     std::string_view               name,
     std::string_view               value
   )
-);
-
-CPP2B_BUILD_DECL_FN(
-  cpp2b_detail_create_cpp1_module,
-  std::shared_ptr<cpp2b_detail_cpp1_module_impl>(cpp2b_detail_build_impl* impl)
 );
 
 export namespace cpp2b {

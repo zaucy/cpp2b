@@ -961,12 +961,44 @@ full_build_info: @struct type = {
 }
 
 cpp2b_detail_create_cpp1_module: (
-	copy impl: *cpp2b_detail_build_impl
+	copy impl: *cpp2b_detail_build_impl,
 ) -> std::shared_ptr<cpp2b_detail_cpp1_module_impl> = {
 	cpp1_module_impl := cpp2::shared.new<cpp2b_detail_cpp1_module_impl>();
 	
 	return cpp1_module_impl;
 }
+
+cpp2b_detail_cpp1_module_source_path: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy p: fs::path,
+) -> void = {
+	assert("TODO");
+}
+
+cpp2b_detail_cpp1_module_include_directory: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy p: fs::path,
+) -> void = {
+	assert("TODO");
+}
+
+
+cpp2b_detail_cpp1_module_system_include_directory: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy p: fs::path,
+) -> void = {
+	assert("TODO");
+}
+
+
+cpp2b_detail_cpp1_module_define: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy name: std::string_view,
+	copy value: std::string_view,
+) -> void = {
+	assert("TODO");
+}
+
 
 contains_target: (targets, value: std::string) -> bool = {
 	for targets do(target: std::string) {
@@ -1135,6 +1167,10 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		build_dylib.assert_symbol("cpp2b_detail_git_repo_path");
 
 		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_define&)>("cpp2b_detail_cpp1_module_define") = cpp2b_detail_cpp1_module_define&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_include_directory&)>("cpp2b_detail_cpp1_module_include_directory") = cpp2b_detail_cpp1_module_include_directory&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_source_path&)>("cpp2b_detail_cpp1_module_source_path") = cpp2b_detail_cpp1_module_source_path&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_system_include_directory&)>("cpp2b_detail_cpp1_module_system_include_directory") = cpp2b_detail_cpp1_module_system_include_directory&;
 		build_dylib.get_variable<decltype(cpp2b_detail_create_cpp1_module&)>("cpp2b_detail_create_cpp1_module") = cpp2b_detail_create_cpp1_module&;
 		build_dylib.get_variable<decltype(cpp2b_detail_git_clone&)>("cpp2b_detail_git_clone") = cpp2b_detail_git_clone&;
 		build_dylib.get_variable<decltype(cpp2b_detail_git_repo_path&)>("cpp2b_detail_git_repo_path") = cpp2b_detail_git_repo_path&;
