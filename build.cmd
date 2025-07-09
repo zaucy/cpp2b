@@ -192,7 +192,7 @@ for /f "tokens=1-3 delims=." %%a in ("!ver!") do (
 if "%major%"=="14" (
     set /a m=!minor!
     set /a p=!patch!
-    if !m! LEQ 44 (
+    if !m! LEQ 43 (
         if not defined chosen_version (
             set "chosen_version=!ver!"
             set "chosen_minor=!m!"
