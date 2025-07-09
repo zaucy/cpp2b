@@ -27,33 +27,22 @@ if exist "%vs_install_dir%\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.t
     set LatestVCToolsVersion=!Version: =!
 )
 
-:: Get list of installed MSVC versions, highest first
-set "msvc_root=%vs_install_dir%\VC\Tools\MSVC"
-set "ChosenMSVC="
 
-for /f "delims=" %%v in ('dir /b /ad "%msvc_root%" ^| sort /R') do (
-    set "ver=%%v"
-    for /f "tokens=1,2 delims=." %%a in ("!ver!") do (
-        set "major=%%a"
-        set "minor=%%b"
-    )
-    rem Compare major.minor ≤ 14.43
-    if !major! LSS 14 (
-        set "ChosenMSVC=%%v"
-        goto :found
-    ) else if !major! EQU 14 if !minor! LEQ 43 (
-        set "ChosenMSVC=%%v"
-        goto :found
-    )
+set "msvc_root=%vs_install_dir%\VC\Tools\MSVC"
+set "chosen_minor=0"
+set "chosen_patch=0"
+
+:: Iterate over all MSVC versions installed
+for /f "delims=" %%v in ('dir /b /ad "%msvc_root%"') do (
+    call :check_version "%%v"
 )
 
-echo ERROR: MSVC version ≤ 14.43 not found
-exit 1
+if not defined chosen_version (
+    echo ERROR: MSVC version less than or equal to 14.43 not found
+    exit 1
+)
 
-:found
-
-:: Call vsdevcmd with selected version
-call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo -vcvars_ver=%ChosenMSVC%
+call "%vs_install_dir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo -vcvars_ver=!chosen_version!
 
 if "%VCToolsInstallDir%"=="" (
     echo ERROR: missing VCToolsInstallDir after running vsdevcmd.bat
@@ -185,3 +174,38 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
 if %ERRORLEVEL% neq 0 exit %ERRORLEVEL%
 
 echo %cpp2b_dist%.exe
+
+:: -------------------------------
+:: Subroutine: check_version
+:: %1 = version string like 14.43.32706
+:: -------------------------------
+:check_version
+set "ver=%~1"
+for /f "tokens=1-3 delims=." %%a in ("!ver!") do (
+    set "major=%%a"
+    set "minor=%%b"
+    set "patch=%%c"
+)
+
+if "%major%"=="14" (
+    set /a m=!minor!
+    set /a p=!patch!
+    if !m! LEQ 43 (
+        if not defined chosen_version (
+            set "chosen_version=!ver!"
+            set "chosen_minor=!m!"
+            set "chosen_patch=!p!"
+        ) else (
+            if !m! GTR !chosen_minor! (
+                set "chosen_version=!ver!"
+                set "chosen_minor=!m!"
+                set "chosen_patch=!p!"
+            ) else if !m! EQU !chosen_minor! if !p! GTR !chosen_patch! (
+                set "chosen_version=!ver!"
+                set "chosen_minor=!m!"
+                set "chosen_patch=!p!"
+            )
+        )
+    )
+)
+goto :eof
