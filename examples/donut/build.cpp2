@@ -1,4 +1,5 @@
 import cpp2b.build;
 
 build: (inout b: cpp2b::build) -> void = {
+	_ = b.cpp1_module().source_path("gotoxy.cppm");
 }

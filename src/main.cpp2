@@ -10,8 +10,16 @@ log_error: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Ar
 	std::println("\033[0;31mERROR\033[0m: {}", std::format(fmt, args...));
 }
 
+log_error: <Args...: type>(srcloc: std::source_location, fmt: std::format_string<Args...>, forward args...: Args) = {
+	std::println("\033[0;31mERROR\033[0m: {}:{}:{} {}", srcloc.file_name(), srcloc.line(), srcloc.column(), std::format(fmt, args...));
+}
+
 log_warning: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Args) = {
 	std::println("\033[0;33mWARNING\033[0m: {}", std::format(fmt, args...));
+}
+
+log_warning: <Args...: type>(srcloc: std::source_location, fmt: std::format_string<Args...>, forward args...: Args) = {
+	std::println("\033[0;33mWARNING\033[0m: {}:{}:{} {}", srcloc.file_name(), srcloc.line(), srcloc.column(), std::format(fmt, args...));
 }
 
 log_info: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Args) = {
@@ -20,6 +28,10 @@ log_info: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Arg
 
 log_success: <Args...: type>(fmt: std::format_string<Args...>, forward args...: Args) = {
 	std::println("\033[0;32mSUCCESS\033[0m: {}", std::format(fmt, args...));
+}
+
+git_clone_url_matcher: @regex type = {
+    regex := R"(^(?:git@|ssh://git@|https://|http://|git://)?([^:/]+)[:/]{1,2}([^/]+)/([^/]+?)(?:\.git)?$)";
 }
 
 ensure_dir: (dir: fs::path) = {
@@ -177,7 +189,9 @@ generate_cpp2b_module: () = {
 	cpp2b_module_template_stream.close();
 	cpp2b_module_source_stream.close();
 
-	build_cpp1_module("cpp2b", :std::vector=(cpp2b_module_source_path), :std::vector=("std", "std.compat"));
+	impl: cpp2b_detail_cpp1_module_impl = ();
+	impl.source_path = cpp2b_module_source_path;
+	build_cpp1_module(impl, "cpp2b", :std::vector=("std", "std.compat"));
 }
 
 generate_cpp2b_build_module: () = {
@@ -211,7 +225,10 @@ generate_cpp2b_build_module: () = {
 	cpp2b_module_template_stream.close();
 	cpp2b_module_source_stream.close();
 
-	build_cpp1_module("cpp2b.build", :std::vector=(cpp2b_module_source_path), :std::vector=("std", "std.compat"));
+
+	impl: cpp2b_detail_cpp1_module_impl = ();
+	impl.source_path = cpp2b_module_source_path;
+	build_cpp1_module(impl, "cpp2b.build", :std::vector=("std", "std.compat"));
 }
 
 get_vs_tools_dir: () -> fs::path = {
@@ -241,11 +258,9 @@ ensure_system_module: (name: std::string, deps) = {
 	system_modules_dir := get_system_modules_dir(cpp2b::compiler());
 
 	if !fs::exists(bmi) {
-		build_cpp1_module(
-			name,
-			:std::vector=(system_modules_dir / std::format("{}{}", name, module_source_extension(cpp2b::compiler()))),
-			deps
-		);
+		impl: cpp2b_detail_cpp1_module_impl = ();
+		impl.source_path = system_modules_dir / std::format("{}{}", name, module_source_extension(cpp2b::compiler()));
+		build_cpp1_module(impl, name, deps);
 	}
 }
 
@@ -255,35 +270,49 @@ ensure_std_modules: () = {
 }
 
 
-cl_build_cpp1_module_cmd: (name: std::string, sources, module_deps, bmi_path: fs::path) -> std::string = {
+cl_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, name: std::string, module_deps, bmi_path: fs::path) -> std::string = {
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP";
+
+	for impl.system_include_directories do (dir: fs::path) {
+		cmd_str += " /I\"(fs::absolute(dir).string())$\"";
+	}
+
+	for impl.include_directories do (dir: fs::path) {
+		cmd_str += " /I\"(fs::absolute(dir).string())$\"";
+	}
+
 	for module_deps do (dep: std::string) {
 		dep_bmi := d / ("(dep)$.ifc");
 		cmd_str += " /reference \"(dep_bmi.string())$\"";
 	}
-	for sources do (src: fs::path) {
-		cmd_str += " \"(fs::absolute(src).string())$\"";
-	}
+	cmd_str += " \"(fs::absolute(impl.source_path).string())$\"";
 	cmd_str += " /ifcOutput \"(bmi_path.string())$\"";
 	return cmd_str;
 }
 
 
-unix_build_cpp1_module_cmd: (compiler_cmd: std::string, name: std::string, sources, module_deps, bmi_path: fs::path) -> std::string = {
+unix_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, compiler_cmd: std::string, name: std::string, module_deps, bmi_path: fs::path) -> std::string = {
 	d := fs::absolute(modules_dir());
 	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
 	cmd_str: std::string = std::format("{} -stdlib=libc++ -std=c++23 -fexperimental-library", compiler_cmd);
 	cmd_str += std::format(" -isystem \"{}\"", fs::absolute(sys_inc_dir).string());
-	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", fs::absolute(d).string());
-	for sources do (src: fs::path) {
-		cmd_str += " \"(fs::absolute(src).string())$\"";
+
+	for impl.system_include_directories do (dir: fs::path) {
+		cmd_str += std::format(" -isystem \"{}\"", fs::absolute(dir).string());
 	}
+
+	for impl.include_directories do (dir: fs::path) {
+		cmd_str += std::format(" -I\"{}\"", fs::absolute(dir).string());
+	}
+
+	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", fs::absolute(d).string());
+	cmd_str += " \"(fs::absolute(impl.source_path).string())$\"";
 	cmd_str += std::format(" --precompile -o {}/{}.pcm", d.string(), name);
 	return cmd_str;
 }
 
-build_cpp1_module: (name: std::string, sources, module_deps) = {
+build_cpp1_module: (impl: cpp2b_detail_cpp1_module_impl, name: std::string, module_deps) = {
 	compiler :== cpp2b::compiler();
 	d := fs::absolute(modules_dir());
 	bmi := d / std::format("{}{}", name, bmi_extension(compiler));
@@ -293,9 +322,9 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 	ensure_dir(log_path.parent_path());
 
 	cmd_str: std::string = "";
-	     if compiler == cpp2b::compiler_type::msvc { cmd_str = cl_build_cpp1_module_cmd(name, sources, module_deps, bmi); }
-	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_cpp1_module_cmd("clang-19", name, sources, module_deps, bmi); }
-	else if compiler == cpp2b::compiler_type::gcc { cmd_str = unix_build_cpp1_module_cmd("gcc", name, sources, module_deps, bmi); }
+	     if compiler == cpp2b::compiler_type::msvc { cmd_str = cl_build_cpp1_module_cmd(impl, name, module_deps, bmi); }
+	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_cpp1_module_cmd(impl, "clang-19", name, module_deps, bmi); }
+	else if compiler == cpp2b::compiler_type::gcc { cmd_str = unix_build_cpp1_module_cmd(impl, "gcc", name, module_deps, bmi); }
 	else { log_error("unsupported compiler"); std::exit(1); }
 
 	cmd_str += cmd_log_output(fs::absolute(log_path));
@@ -310,6 +339,7 @@ build_cpp1_module: (name: std::string, sources, module_deps) = {
 
 	if exit_code != 0 {
 		log_error("failed to compile module {}", name);
+		log_error("{}", cmd_str);
 		print_log_file(log_path);
 		std::exit(1);
 	}
@@ -725,10 +755,72 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	return result;
 }
 
+git_repo_clone_result: @struct type = {
+	operations: std::string = "";
+	exit_code: int = ();
+	duration: std::chrono::milliseconds = ();
+	log_path: fs::path = ();
+}
+
+git_clone_task: (repo: std::shared_ptr<cpp2b_detail_git_repo_impl>) -> git_repo_clone_result = {
+	result: git_repo_clone_result = ();
+	
+	repo_path := cpp2b_detail_git_repo_path(repo.get());
+	log_path := fs::absolute(std::format(
+		".cache/cpp2/log/git_clone/{}/{}/{}.log",
+		repo*.clone_host,
+		repo*.clone_owner_dirname,
+		repo*.clone_repo_dirname,
+	));
+
+	result.log_path = log_path;
+
+	append_operation :=: (op: std::string) = {
+		if !result&$*.operations.empty() {
+			result&$*.operations += std::format(" + {}", op);
+		} else {
+			result&$*.operations += op;
+		}
+	};
+
+	if !(repo_path / ".git").fs::exists() {
+		ensure_dir(log_path.parent_path());
+
+		append_operation("clone");
+
+		cmd_str := std::format(
+			"git clone {} {} {}",
+			repo*.clone_url,
+			fs::relative(repo_path).generic_string(),
+			cmd_log_output(fs::relative(log_path)),
+		);
+		clone_duration: std::chrono::milliseconds;
+		result.exit_code = measure(:()=std::system(cmd_str$.c_str()), out clone_duration);
+		result.duration += clone_duration;
+	}
+
+	if result.exit_code != 0 { return result; }
+
+	append_operation("checkout");
+
+	cmd_str := std::format(
+		"git -C {} checkout {} {}",
+		fs::relative(repo_path).generic_string(),
+		repo*.commitish,
+		cmd_log_output(fs::relative(log_path)),
+	);
+	checkout_duration: std::chrono::milliseconds;
+	result.exit_code = measure(:()=std::system(cmd_str$.c_str()), out checkout_duration);
+	result.duration += checkout_duration;
+
+	return result;
+}
 
 cpp2b_detail_build_impl: @struct type = {
 	public build_cpp2_dir: fs::path;
 	public bins: *std::vector<cpp2b_source_binary_info>;
+	public git_repos: std::vector<std::shared_ptr<cpp2b_detail_git_repo_impl>>;
+	public cpp1_modules: std::vector<std::shared_ptr<cpp2b_detail_cpp1_module_impl>>;
 }
 cpp2b_detail_build_binary_name: (
 	copy impl: *cpp2b_detail_build_impl,
@@ -748,6 +840,57 @@ cpp2b_detail_build_binary_name: (
 	}
 
 	bin*.preferred_name = (build_cpp2_dir / new_binary_name).generic_string();
+}
+
+cpp2b_detail_git_repo_impl: @struct type = {
+	public clone_url: std::string = "";
+	public commitish: std::string = "";
+
+	public clone_host: std::string = "";
+	public clone_owner_dirname: std::string = "";
+	public clone_repo_dirname: std::string = "";
+}
+
+cpp2b_detail_cpp1_module_impl: @struct type = {
+	public build_cpp2_dir: fs::path = ();
+	public source_path: fs::path = ();
+	public include_directories: std::vector<fs::path> = ();
+	public system_include_directories: std::vector<fs::path> = ();
+	public defines: std::unordered_map<std::string, std::string> = ();
+	public has_error: bool = false;
+}
+
+cpp2b_detail_git_clone: (
+	copy impl: *cpp2b_detail_build_impl,
+	copy clone_url: std::string_view,
+	copy commitish: std::string_view,
+) -> std::shared_ptr<cpp2b_detail_git_repo_impl> = {
+	repo_impl := cpp2::shared.new<cpp2b_detail_git_repo_impl>();
+
+	repo_impl*.clone_url = clone_url;
+	repo_impl*.commitish = commitish;
+
+
+	m: git_clone_url_matcher = ();
+	result := m.regex.match(repo_impl*.clone_url);
+	
+	repo_impl*.clone_host = result.group(1);
+	repo_impl*.clone_owner_dirname = result.group(2);
+	repo_impl*.clone_repo_dirname = result.group(3);
+
+	impl*.git_repos.emplace_back(repo_impl);
+
+	return repo_impl;
+}
+
+cpp2b_detail_git_repo_path: (
+	copy impl: *const cpp2b_detail_git_repo_impl,
+) -> fs::path = {
+	return fs::absolute(std::format(
+		".cache/cpp2/repos/{}/{}",
+		impl*.clone_owner_dirname,
+		impl*.clone_repo_dirname,
+	));
 }
 
 cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
@@ -847,6 +990,83 @@ full_build_info: @struct type = {
 	}
 }
 
+cpp2b_detail_create_cpp1_module: (
+	copy impl: *cpp2b_detail_build_impl,
+) -> std::shared_ptr<cpp2b_detail_cpp1_module_impl> = {
+	cpp1_module_impl := cpp2::shared.new<cpp2b_detail_cpp1_module_impl>();
+	
+	cpp1_module_impl*.build_cpp2_dir = impl*.build_cpp2_dir;
+	impl*.cpp1_modules.emplace_back(cpp1_module_impl);
+	
+	return cpp1_module_impl;
+}
+
+cpp2b_detail_cpp1_module_source_path: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy p: fs::path,
+	copy caller_srcloc: std::source_location,
+) -> void = {
+	if p.is_relative() {
+		// NOTE: msvc fails to compile this due to some cppfront zero check
+		// p = impl*.build_cpp2_dir / p;
+		p = unchecked_div(impl*.build_cpp2_dir, p);
+	}
+
+	if !impl*.source_path.empty() {
+		impl*.has_error = true;
+		log_error(caller_srcloc, "source path already set - only one source path is currently allowed for cpp1 modules");
+	} else {
+		impl*.source_path = p;
+	}
+}
+
+cpp2b_detail_cpp1_module_include_directory: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy p: fs::path,
+	copy caller_srcloc: std::source_location,
+) -> void = {
+	
+	if impl*.include_directories.std::ranges::contains(p) {
+		log_warning(caller_srcloc, "already added include directory {}", p.generic_string());
+	} else if impl*.system_include_directories.std::ranges::contains(p) {
+		log_warning(caller_srcloc, "already added system include directory {}", p.generic_string());
+	} else {
+		impl*.include_directories.emplace_back(p);
+	}
+}
+
+
+cpp2b_detail_cpp1_module_system_include_directory: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy p: fs::path,
+	copy caller_srcloc: std::source_location,
+) -> void = {
+	if impl*.include_directories.std::ranges::contains(p) {
+		log_warning(caller_srcloc, "already added include directory {}", p.generic_string());
+	} else if impl*.system_include_directories.std::ranges::contains(p) {
+		log_warning(caller_srcloc, "already added system include directory {}", p.generic_string());
+	} else {
+		impl*.system_include_directories.emplace_back(p);
+	}
+}
+
+
+cpp2b_detail_cpp1_module_define: (
+	copy impl: *cpp2b_detail_cpp1_module_impl,
+	copy name: std::string_view,
+	copy value: std::string_view,
+	copy caller_srcloc: std::source_location,
+) -> void = {
+	if impl*.defines.contains(std::string(name)) {
+		impl*.has_error = true;
+		current_definition_value := impl*.defines.at(std::string(name));
+		log_error(caller_srcloc, "definition {} (with value {}) already added", name, current_definition_value);
+	} else {
+		impl*.defines[std::string(name)] = std::string(value);
+	}
+}
+
+
 contains_target: (targets, value: std::string) -> bool = {
 	for targets do(target: std::string) {
 		if target == value { return true; }
@@ -872,7 +1092,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 	transpile_source_dir: fs::path = ".cache/cpp2/source";
 	cpp2_source_files: std::vector<fs::path> = ();
-	cpp1_module_source_files: std::vector<fs::path> = ();
 	ec: std::error_code = ();
 
 	for fs::recursive_directory_iterator(transpile_source_dir) do(p: fs::path) {
@@ -893,15 +1112,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			}
 
 			cpp2_source_files.emplace_back(rel_path);
-		} else if p.extension() == ".cppm" {
-			rel_path := fs::relative(p, fs::current_path());
-			for rel_path do(rel_path_comp) {
-				if rel_path_comp.string().starts_with(".") {
-					continue src_loop;
-				}
-			}
-
-			cpp1_module_source_files.emplace_back(rel_path);
 		}
 	}
 
@@ -960,24 +1170,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		std::pair("std.compat", true),
 	);
 
-
-	for cpp1_module_source_files do(src_file: fs::path) {
-		result := cpp2b_parse_cpp1_module_statements(std::ifstream(src_file));
-
-		if result.module_name.empty() {
-			log_error("cannot find exported module in {}", src_file.generic_string());
-			std::exit(1);
-		}
-
-		if !result.exported {
-			log_error("module {} in {} must be exported", result.module_name, src_file.generic_string());
-			std::exit(1);
-		}
-		
-		build_cpp1_module(result.module_name, :std::vector=(src_file), result.imports);
-		built_modules[result.module_name] = true;
-	}
-
 	build_script_futures: std::vector<std::pair<std::reference_wrapper<cpp2b_source_build_info>, std::future<build_binary_result>>> = ();
 	build_script_futures.reserve(stuff.build_scripts.size());
 
@@ -994,6 +1186,9 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			std::async(std::launch::async, build_build_script, build_script)
 		);
 	}
+
+	git_repos: std::vector<std::shared_ptr<cpp2b_detail_git_repo_impl>> = ();
+	cpp1_modules: std::vector<std::shared_ptr<cpp2b_detail_cpp1_module_impl>> = ();
 	
 	for build_script_futures do(inout p) {
 		build_result := p.second.get();
@@ -1012,11 +1207,83 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		build_dylib.assert_symbol("cpp2b_detail_build");
 		build_dylib.assert_symbol("cpp2b_detail_build_binary_name");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_define");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_include_directory");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_source_path");
+		build_dylib.assert_symbol("cpp2b_detail_cpp1_module_system_include_directory");
+		build_dylib.assert_symbol("cpp2b_detail_create_cpp1_module");
+		build_dylib.assert_symbol("cpp2b_detail_git_clone");
+		build_dylib.assert_symbol("cpp2b_detail_git_repo_path");
 
 		build_dylib.get_variable<decltype(cpp2b_detail_build_binary_name&)>("cpp2b_detail_build_binary_name") = cpp2b_detail_build_binary_name&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_define&)>("cpp2b_detail_cpp1_module_define") = cpp2b_detail_cpp1_module_define&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_include_directory&)>("cpp2b_detail_cpp1_module_include_directory") = cpp2b_detail_cpp1_module_include_directory&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_source_path&)>("cpp2b_detail_cpp1_module_source_path") = cpp2b_detail_cpp1_module_source_path&;
+		build_dylib.get_variable<decltype(cpp2b_detail_cpp1_module_system_include_directory&)>("cpp2b_detail_cpp1_module_system_include_directory") = cpp2b_detail_cpp1_module_system_include_directory&;
+		build_dylib.get_variable<decltype(cpp2b_detail_create_cpp1_module&)>("cpp2b_detail_create_cpp1_module") = cpp2b_detail_create_cpp1_module&;
+		build_dylib.get_variable<decltype(cpp2b_detail_git_clone&)>("cpp2b_detail_git_clone") = cpp2b_detail_git_clone&;
+		build_dylib.get_variable<decltype(cpp2b_detail_git_repo_path&)>("cpp2b_detail_git_repo_path") = cpp2b_detail_git_repo_path&;
 
-		b: cpp2b_detail_build_impl = (build_script.src.parent_path(), stuff.bins&);
+		b: cpp2b_detail_build_impl = (
+			build_script.src.parent_path(),
+			stuff.bins&,
+			:std::vector<std::shared_ptr<cpp2b_detail_git_repo_impl>>=(),
+			:std::vector<std::shared_ptr<cpp2b_detail_cpp1_module_impl>>=(),
+		);
 		build_dylib.get_function<decltype(cpp2b_detail_build)>("cpp2b_detail_build")(b&);
+
+		git_repos.append_range(b.git_repos);
+		cpp1_modules.append_range(b.cpp1_modules);
+	}
+
+	git_repo_futures: std::vector<std::future<git_repo_clone_result>> = ();
+	git_repo_futures.reserve(git_repos.size());
+	
+	if !git_repos.empty() {
+		log_info("checking out {0} git repo(s)...", git_repos.size());
+	}
+
+	for git_repos do(git_repo) {
+		git_repo_futures.emplace_back(
+			std::async(std::launch::async, git_clone_task, git_repo)
+		);
+	}
+
+	for std::ranges::views::zip(git_repo_futures, git_repos) do(copy p) {
+		clone_res := std::get<0>(p).get();
+		git_repo := std::get<1>(p);
+
+		if clone_res.exit_code != 0 {
+			log_error("failed to clone repo - exit code {}", clone_res.exit_code);
+			print_log_file(clone_res.log_path);
+			continue;
+		}
+
+		log_info("git {} for {} {} ({}ms)", clone_res.operations, git_repo*.clone_url, git_repo*.commitish, clone_res.duration.count());
+	}
+
+	for cpp1_modules do(copy cpp1m) {
+		src_file := cpp1m*.source_path;
+		
+		if !src_file.fs::exists() {
+			log_error("{} does not exist", src_file.generic_string());
+			std::exit(1);
+		}
+
+		result := cpp2b_parse_cpp1_module_statements(std::ifstream(cpp1m*.source_path));
+
+		if result.module_name.empty() {
+			log_error("cannot find exported module in {}", src_file.generic_string());
+			std::exit(1);
+		}
+
+		if !result.exported {
+			log_error("module {} in {} must be exported", result.module_name, src_file.generic_string());
+			std::exit(1);
+		}
+		
+		build_cpp1_module(cpp1m*, result.module_name, result.imports);
+		built_modules[result.module_name] = true;
 	}
 
 	for stuff.mods do(mod) {
@@ -1027,7 +1294,6 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	if !targets.empty() {
 		bin_targets.reserve(targets.size());
 	}
-
 
 	bin_futures: std::vector<std::pair<std::reference_wrapper<cpp2b_source_binary_info>, std::future<build_binary_result>>> = ();
 	bin_futures.reserve(stuff.bins.size());
