@@ -57,17 +57,29 @@ CPP2B_BUILD_DECL_FN(
 
 CPP2B_BUILD_DECL_FN(
   cpp2b_detail_cpp1_module_source_path,
-  void(cpp2b_detail_cpp1_module_impl* impl, std::filesystem::path p)
+  void(
+    cpp2b_detail_cpp1_module_impl* impl,
+    std::filesystem::path          p,
+    std::source_location           caller_srcloc
+  )
 );
 
 CPP2B_BUILD_DECL_FN(
   cpp2b_detail_cpp1_module_include_directory,
-  void(cpp2b_detail_cpp1_module_impl* impl, std::filesystem::path p)
+  void(
+    cpp2b_detail_cpp1_module_impl* impl,
+    std::filesystem::path          p,
+    std::source_location           caller_srcloc
+  )
 );
 
 CPP2B_BUILD_DECL_FN(
   cpp2b_detail_cpp1_module_system_include_directory,
-  void(cpp2b_detail_cpp1_module_impl* impl, std::filesystem::path p)
+  void(
+    cpp2b_detail_cpp1_module_impl* impl,
+    std::filesystem::path          p,
+    std::source_location           caller_srcloc
+  )
 );
 
 CPP2B_BUILD_DECL_FN(
@@ -75,7 +87,8 @@ CPP2B_BUILD_DECL_FN(
   void(
     cpp2b_detail_cpp1_module_impl* impl,
     std::string_view               name,
-    std::string_view               value
+    std::string_view               value,
+    std::source_location           caller_srcloc
   )
 );
 
@@ -120,28 +133,44 @@ public:
 
   inline ~cpp1_module() = default;
 
-  inline auto source_path(std::filesystem::path p) -> cpp1_module {
+  inline auto source_path(
+    std::filesystem::path p,
+    std::source_location  caller_srcloc = std::source_location::current()
+  ) -> cpp1_module {
     CPP2B_BUILD_FN_CHECK(cpp2b_detail_cpp1_module_source_path);
-    (*cpp2b_detail_cpp1_module_source_path)(impl.get(), p);
+    (*cpp2b_detail_cpp1_module_source_path)(impl.get(), p, caller_srcloc);
     return *this;
   }
 
-  inline auto include_directory(std::filesystem::path p) -> cpp1_module {
+  inline auto include_directory(
+    std::filesystem::path p,
+    std::source_location  caller_srcloc = std::source_location::current()
+  ) -> cpp1_module {
     CPP2B_BUILD_FN_CHECK(cpp2b_detail_cpp1_module_include_directory);
-    (*cpp2b_detail_cpp1_module_include_directory)(impl.get(), p);
+    (*cpp2b_detail_cpp1_module_include_directory)(impl.get(), p, caller_srcloc);
     return *this;
   }
 
-  inline auto system_include_directory(std::filesystem::path p) -> cpp1_module {
+  inline auto system_include_directory(
+    std::filesystem::path p,
+    std::source_location  caller_srcloc = std::source_location::current()
+  ) -> cpp1_module {
     CPP2B_BUILD_FN_CHECK(cpp2b_detail_cpp1_module_system_include_directory);
-    (*cpp2b_detail_cpp1_module_system_include_directory)(impl.get(), p);
+    (*cpp2b_detail_cpp1_module_system_include_directory)(
+      impl.get(),
+      p,
+      caller_srcloc
+    );
     return *this;
   }
 
-  inline auto define(std::string_view name, std::string_view value)
-    -> cpp1_module {
+  inline auto define(
+    std::string_view     name,
+    std::string_view     value,
+    std::source_location caller_srcloc = std::source_location::current()
+  ) -> cpp1_module {
     CPP2B_BUILD_FN_CHECK(cpp2b_detail_cpp1_module_define);
-    (*cpp2b_detail_cpp1_module_define)(impl.get(), name, value);
+    (*cpp2b_detail_cpp1_module_define)(impl.get(), name, value, caller_srcloc);
     return *this;
   }
 };

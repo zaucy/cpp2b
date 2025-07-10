@@ -1,5 +1,7 @@
 import cpp2b.build;
 
 build: (inout b: cpp2b::build) -> void = {
+	_ = b.cpp1_module().source_path("src/dylib.cppm");
+	_ = b.cpp1_module().source_path("src/nlohmann.json.cppm");
 	b.binary_name("src/main", "cpp2b");
 }
