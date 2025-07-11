@@ -1269,8 +1269,15 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 			log_error("{} does not exist", src_file.generic_string());
 			std::exit(1);
 		}
+	
+		src_stream: std::ifstream = (src_file, std::ios_base::binary);
+		
+		if !src_stream.good() {
+			log_error("failed to open {} - {}", src_file.generic_string(), cpp2b::os::get_last_error());
+			std::exit(1);
+		}
 
-		result := cpp2b_parse_cpp1_module_statements(std::ifstream(cpp1m*.source_path));
+		result := cpp2b_parse_cpp1_module_statements(src_stream);
 
 		if result.module_name.empty() {
 			log_error("cannot find exported module in {}", src_file.generic_string());
@@ -1632,6 +1639,8 @@ contains_any_whitespace: (str: std::string_view) -> bool = {
 }
 
 cpp2b_parse_cpp1_module_statements: (copy stream: std::ifstream) -> (module_name: std::string, imports: std::vector<std::string>, exported: bool) = {
+	assert(stream.good());
+
 	statement: std::string = "";
 	module_name = "";
 	imports = ();
