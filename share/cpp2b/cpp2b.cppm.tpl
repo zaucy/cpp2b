@@ -245,22 +245,8 @@ auto get_last_error() -> std::string {
 
   return message;
 #else
-  int errnum = errno;
-
-#  if (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
-  // Use thread-safe strerror_r (POSIX version)
-  char buffer[256];
-  if(strerror_r(errnum, buffer, sizeof(buffer)) == 0) {
-    return std::string(buffer);
-  } else {
-    return "Unknown error";
-  }
-#  else
-  // Use GNU-specific strerror_r, which returns a char*
-  char buffer[256];
-  return std::string(strerror_r(errnum, buffer, sizeof(buffer)));
-#  endif
-
+  // TODO: other platforms
+  return "";
 #endif
 }
 } // namespace cpp2b::os
