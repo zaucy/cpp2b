@@ -170,7 +170,7 @@ if %ERRORLEVEL% neq 0 (
 
 if not exist "%root_dir%.cache/cpp2/source/src" ( mkdir "%root_dir%.cache/cpp2/source/src" )
 
-%cppfront% src/main.cpp2 -import-std -l -format-colon-errors -o "%root_dir%.cache/cpp2/source/src/main.cpp"
+%cppfront% src/main.cpp2 -pure -import-std -l -format-colon-errors -o "%root_dir%.cache/cpp2/source/src/main.cpp"
 
 if %ERRORLEVEL% neq 0 exit %ERRORLEVEL%
 
