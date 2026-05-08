@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 set root_dir=%~dp0
 set tools_dir=%~dp0.cache\tools\
 set cppfront=%tools_dir%\cppfront.exe
-set cppfront_include_dir=%~dp0.cache\repos\cppfront\include
+set cppfront_include_dir=%~dp0cppfront\source
 set cpp2b_dist=%~dp0dist\debug\cpp2b
 set modules_dir=%~dp0.cache\modules
 
@@ -140,8 +140,23 @@ if %ERRORLEVEL% neq 0 (
     exit %ERRORLEVEL%
 )
 
+echo INFO: compiling parser_wrapper module...
+pushd %modules_dir%
+cl /nologo ^
+    /std:c++latest /W4 /MDd /EHsc ^
+    -I"%cppfront_include_dir%" ^
+    /reference "%modules_dir%\std.ifc" ^
+    /reference "%modules_dir%\std.compat.ifc" ^
+    /c /interface /TP "%root_dir%src\parser_wrapper.cppm" > NUL
+popd
+
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: failed to compile parser_wrapper module
+    exit %ERRORLEVEL%
+)
+
 if not exist %cppfront% (
-    pushd .cache\repos\cppfront\source
+    pushd cppfront\source
     echo INFO: compiling cppfront...
     cl /nologo /std:c++latest /EHsc cppfront.cpp
     xcopy cppfront.exe %tools_dir% /Y /Q
@@ -155,7 +170,7 @@ if %ERRORLEVEL% neq 0 (
 
 if not exist "%root_dir%.cache/cpp2/source/src" ( mkdir "%root_dir%.cache/cpp2/source/src" )
 
-%cppfront% src/main.cpp2 -pure -import-std -l -format-colon-errors -o "%root_dir%.cache/cpp2/source/src/main.cpp"
+%cppfront% src/main.cpp2 -import-std -l -format-colon-errors -o "%root_dir%.cache/cpp2/source/src/main.cpp"
 
 if %ERRORLEVEL% neq 0 exit %ERRORLEVEL%
 
@@ -167,6 +182,7 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
     /reference "%modules_dir%\dylib.ifc" "%modules_dir%\dylib.obj" ^
     /reference "%modules_dir%\nlohmann.json.ifc" "%modules_dir%\nlohmann.json.obj" ^
     /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
+    /reference "%modules_dir%\parser_wrapper.ifc" "%modules_dir%\parser_wrapper.obj" ^
     /std:c++latest /W4 /MDd /EHsc ^
     /DEBUG:FULL /Zi /FC ^
     -I"%cppfront_include_dir%" ^

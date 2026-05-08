@@ -2,6 +2,7 @@ import std.compat;
 import cpp2b;
 import dylib;
 import nlohmann.json;
+import parser_wrapper;
 
 fs: namespace == std::filesystem;
 json: type == nlohmann::json;
@@ -95,15 +96,31 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 	return opt*;
 }
 
-GitHubRepo: type = {
-	private repo_: fs::path;
+GitRepo: type = {
+	private repo_name: fs::path = ();
+	private clone_url: std::string = ();
 
-	operator=: (out this, repo, branch) = {
-		repo_ = repo;
+	operator=: (out this, repo: std::string_view, branch: std::string_view) = {
+		if repo.find("://") != std::string_view::npos {
+			clone_url = std::string(repo);
+			// Simple folder name extraction from URL
+			last_slash := repo.find_last_of('/');
+			if last_slash != std::string_view::npos {
+				repo_name = std::string(repo.substr(last_slash + 1));
+				if repo_name.string().ends_with(".git") {
+					repo_name = repo_name.string().substr(0, repo_name.string().size() - 4);
+				}
+			} else {
+				repo_name = std::string(repo);
+			}
+		} else {
+			clone_url = "https://github.com/(repo)$";
+			repo_name = std::string(repo);
+		}
 
 		if !fs::exists(path() / ".git") {
 			ensure_dir(path());
-			git_("clone --depth=1 --branch=(branch)$ --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
+			git_("clone --depth=1 --branch=(branch)$ --filter=blob:none --sparse (clone_url)$ .");
 		}
 	}
 
@@ -116,7 +133,7 @@ GitHubRepo: type = {
 	}
 
 	path: (this) -> fs::path = {
-		return fs::current_path() / ".cache" / "cpp2" / "repos" / repo_;
+		return fs::current_path() / ".cache" / "cpp2" / "repos" / repo_name;
 	}
 
 	add: (this, subpath: std::string) = {
@@ -898,14 +915,21 @@ cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
 }
 
 cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path) -> std::string = {
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	cppfront_include_dir: fs::path = fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	if fs::exists("cppfront/source") {
+		cppfront_include_dir = fs::absolute("cppfront/source");
+	} else if fs::exists("cppfront/include") {
+		cppfront_include_dir = fs::absolute("cppfront/include");
+	}
+
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL";
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
 		imp_obj := d / ("(imp)$.obj");
-		cmd_str += " /reference \"(imp_bmi.string())$\" \"(imp_obj.string())$\"";
+		cmd_str += " /reference \"(imp_bmi.string())$\"";
+		cmd_str += " \"(imp_obj.string())$\"";
 	}
 	cmd_str += " \"(transpiled_src .string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
@@ -919,7 +943,12 @@ cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path
 unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_build_info, bin_outpath: fs::path) -> std::string = {
 	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
 	sys_lib_dir := get_llvm_root() / "lib";
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	cppfront_include_dir: fs::path = fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+	if fs::exists("cppfront/source") {
+		cppfront_include_dir = fs::absolute("cppfront/source");
+	} else if fs::exists("cppfront/include") {
+		cppfront_include_dir = fs::absolute("cppfront/include");
+	}
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = std::format("{} -stdlib=libc++ -shared", compiler_cmd);
@@ -1079,7 +1108,23 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
-	(repo := GitHubRepo("hsutter/cppfront", "v0.8.1")) { 
+	cppfront_url: std::string = "hsutter/cppfront";
+	cppfront_version: std::string = "v0.8.1";
+
+	if fs::exists("build.cpp2") {
+		build_info_variant := cpp2b_parse_source("build.cpp2");
+		if build_info_variant.is_build() {
+			build_info := build_info_variant.build();
+			if build_info.constants.contains("cppfront_url") {
+				cppfront_url = build_info.constants.at("cppfront_url");
+			}
+			if build_info.constants.contains("cppfront_version") {
+				cppfront_version = build_info.constants.at("cppfront_version");
+			}
+		}
+	}
+
+	(repo := GitRepo(cppfront_url, cppfront_version)) { 
 		repo.add("source");
 		repo.add("include");
 		exit_code = ensure_cppfront(repo.path());
@@ -1106,7 +1151,8 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		if p.extension() == ".cpp2" {
 			rel_path := fs::relative(p, fs::current_path());
 			for rel_path do(rel_path_comp) {
-				if rel_path_comp.string().starts_with(".") {
+				comp := rel_path_comp.string();
+				if comp.starts_with(".") || comp == "cppfront" || comp == "dist" {
 					continue src_loop;
 				}
 			}
@@ -1593,6 +1639,7 @@ cpp2b_source_binary_info: @struct type = {
 cpp2b_source_build_info: @struct type = {
 	src: fs::path = ();
 	imports: std::vector<std::string> = ();
+	constants: std::map<std::string, std::string> = ();
 }
 
 cpp2b_source_unknown_info: @struct type = {
@@ -1683,91 +1730,43 @@ cpp2b_parse_cpp1_module_statements: (copy stream: std::ifstream) -> (module_name
 }
 
 cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
-	stream: std::ifstream = source_file;
-	statement: std::string = "";
-	imports: std::vector<std::string> = ();
+	info := parser_wrapper::parse_source(source_file.string());
 
-	// without this cppfront thinks stream is never used
-	assert(stream);
+	if std::ranges::find(info.imports, "std") == info.imports.end() {
+		info.imports.emplace_back("std");
+	}
+
+	if std::ranges::find(info.imports, "std.compat") == info.imports.end() {
+		info.imports.emplace_back("std.compat");
+	}
 
 	result: cpp2b_source_info = ();
 	result.set_unknown(cpp2b_source_unknown_info(source_file));
 
-	while std::getline(stream, statement, ';') {
-		trimmed_statement := statement.ltrim();
-		kw_import: std::string_view = "import";
-
-		if trimmed_statement.starts_with(kw_import) {
-			import_name := trimmed_statement.lstrip(kw_import.size()).ltrim().rtrim();
-			if !contains_any_whitespace(import_name) {
-				imports.emplace_back(import_name);
-			}
-		}
-	}
-
-	if std::ranges::find(imports, "std") == imports.end() {
-		imports.emplace_back("std");
-	}
-
-	if std::ranges::find(imports, "std.compat") == imports.end() {
-		imports.emplace_back("std.compat");
-	}
-
-	if source_file.filename() == "build.cpp2" {
+	if info.kind == parser_wrapper::source_kind::build {
 		build_info: cpp2b_source_build_info = ();
 		build_info.src = source_file;
-		build_info.imports = imports;
+		build_info.imports = info.imports;
+		build_info.constants = info.constants;
 		result.set_build(build_info);
 		return result;
 	}
 
-	stream.clear();
-	stream.seekg(0);
-
-	while std::getline(stream, statement, ';') {
-		trimmed_statement := statement.ltrim();
-		kw_export: std::string_view = "export";
-		kw_module: std::string_view = "module";
-
-		if trimmed_statement.starts_with(kw_export) {
-			trimmed_statement = trimmed_statement.lstrip(kw_export.size()).ltrim();
-			if !trimmed_statement.starts_with(kw_module) { break; }
-
-			module_name := trimmed_statement.lstrip(kw_module.size()).ltrim();
-			partition_start := module_name.find(':');
-			if partition_start != std::string::npos {
-				module_name = module_name.substr(0, partition_start).rtrim();
-			} else {
-				module_name = module_name.rtrim();
-			}
-
-			mod_info: cpp2b_source_module_info = ();
-
-			mod_info.name = std::string(module_name);
-			mod_info.imports = imports;
-			mod_info.exported = true;
-
-			result.set_mod(mod_info);
-			return result;
-		}
+	if info.kind == parser_wrapper::source_kind::module {
+		mod_info: cpp2b_source_module_info = ();
+		mod_info.name = info.module_name;
+		mod_info.imports = info.imports;
+		mod_info.exported = info.exported;
+		result.set_mod(mod_info);
+		return result;
 	}
 
-	stream.clear();
-	stream.seekg(0);
-
-	line: std::string = ();
-	while std::getline(stream, line) {
-		trimmed_line := line.ltrim();
-		if trimmed_line.starts_with("main") {
-			after_main := trimmed_line.substr(4).ltrim();
-			if after_main.empty() || after_main[0] == ':' {
-				bin_info: cpp2b_source_binary_info = ();
-				bin_info.src = source_file;
-				bin_info.imports = imports;
-				result.set_bin(bin_info);
-				return result;
-			}
-		}
+	if info.kind == parser_wrapper::source_kind::binary {
+		bin_info: cpp2b_source_binary_info = ();
+		bin_info.src = source_file;
+		bin_info.imports = info.imports;
+		result.set_bin(bin_info);
+		return result;
 	}
 
 	return result;

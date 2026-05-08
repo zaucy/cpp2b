@@ -83,17 +83,17 @@ function ensure_gh_repo_subdir() {
     fi
 }
 
-ensure_gh_repo "hsutter/cppfront" "v0.8.1"
-ensure_gh_repo_subdir "hsutter/cppfront" "source"
-ensure_gh_repo_subdir "hsutter/cppfront" "include"
+# ensure_gh_repo "hsutter/cppfront" "v0.8.1"
+# ensure_gh_repo_subdir "hsutter/cppfront" "source"
+# ensure_gh_repo_subdir "hsutter/cppfront" "include"
 
-CPPFRONT_INCLUDE_DIR=$ROOT_DIR/.cache/repos/hsutter/cppfront/include
+CPPFRONT_INCLUDE_DIR=$ROOT_DIR/cppfront/source
 
 LLVM_ROOT=/usr/lib/llvm-$COMPILER_MAJOR_VERSION
 
 if ! [ -x $CPPFRONT ]; then
     log_info "compiling cppfront..."
-    cd $ROOT_DIR/.cache/repos/hsutter/cppfront/source
+    cd $ROOT_DIR/cppfront/source
     $CPP2B_COMPILER \
         -std=c++23                                    \
         -stdlib=libc++                                \
