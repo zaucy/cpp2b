@@ -46,21 +46,19 @@ for /f "tokens=1-3 delims=." %%a in ("!ver!") do (
 if "%major%"=="14" (
     set /a m=!minor!
     set /a p=!patch!
-    if !m! LEQ 43 (
-        if not defined ChosenMSVC (
+    if not defined ChosenMSVC (
+        set "ChosenMSVC=!ver!"
+        set "chosen_minor=!m!"
+        set "chosen_patch=!p!"
+    ) else (
+        if !m! GTR !chosen_minor! (
             set "ChosenMSVC=!ver!"
             set "chosen_minor=!m!"
             set "chosen_patch=!p!"
-        ) else (
-            if !m! GTR !chosen_minor! (
-                set "ChosenMSVC=!ver!"
-                set "chosen_minor=!m!"
-                set "chosen_patch=!p!"
-            ) else if !m! EQU !chosen_minor! if !p! GTR !chosen_patch! (
-                set "ChosenMSVC=!ver!"
-                set "chosen_minor=!m!"
-                set "chosen_patch=!p!"
-            )
+        ) else if !m! EQU !chosen_minor! if !p! GTR !chosen_patch! (
+            set "ChosenMSVC=!ver!"
+            set "chosen_minor=!m!"
+            set "chosen_patch=!p!"
         )
     )
 )
