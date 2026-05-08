@@ -1103,17 +1103,16 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	cppfront_url: std::string = "hsutter/cppfront";
 	cppfront_version: std::string = "v0.8.1";
 
-	if fs::exists("build.cpp2") {
-		build_info_variant := cpp2b_parse_source("build.cpp2");
-		if build_info_variant.is_build() {
-			build_info := build_info_variant.build();
-			if build_info.constants.contains("cppfront_url") {
-				cppfront_url = build_info.constants.at("cppfront_url");
-			}
-			if build_info.constants.contains("cppfront_version") {
-				cppfront_version = build_info.constants.at("cppfront_version");
-			}
-		}
+	expect_file("build.cpp2");
+	build_info_variant := cpp2b_parse_source("build.cpp2");
+	assert(build_info_variant.is_build());
+
+	build_info := build_info_variant.build();
+	if build_info.constants.contains("cppfront_url") {
+		cppfront_url = build_info.constants.at("cppfront_url");
+	}
+	if build_info.constants.contains("cppfront_version") {
+		cppfront_version = build_info.constants.at("cppfront_version");
 	}
 
 	cppfront_info_path: fs::path = ".cache/cpp2/tools/cppfront.info";
