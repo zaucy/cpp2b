@@ -60,40 +60,13 @@ fi
 
 log_info "using compiler '$CPP2B_COMPILER' version '$COMPILER_VERSION'"
 
-function ensure_gh_repo() {
-    local repo=$1
-    local branch=$2
-    local repo_path=$ROOT_DIR/.cache/repos/$repo
-    if ! [ -d $repo_path ]; then
-        mkdir -p $repo_path
-        git clone --quiet --depth=1 --branch=$branch --filter=blob:none --sparse https://github.com/$repo $repo_path
-    fi
-}
-
-function ensure_gh_repo_subdir() {
-    local repo=$1
-    local repo_path=$ROOT_DIR/.cache/repos/$repo
-    local repo_subdir=$2
-    local repo_subdir_path=$repo_path/$repo_subdir
-    if ! [ -d $repo_subdir_path ]; then
-        cd $repo_path
-        log_info "checking out repo $repo/$reposubdir"
-        git sparse-checkout add $repo_subdir
-        cd $ROOT_DIR
-    fi
-}
-
-ensure_gh_repo "hsutter/cppfront" "v0.8.1"
-ensure_gh_repo_subdir "hsutter/cppfront" "source"
-ensure_gh_repo_subdir "hsutter/cppfront" "include"
-
-CPPFRONT_INCLUDE_DIR=$ROOT_DIR/.cache/repos/hsutter/cppfront/include
+CPPFRONT_INCLUDE_DIR=$ROOT_DIR/cppfront/source
 
 LLVM_ROOT=/usr/lib/llvm-$COMPILER_MAJOR_VERSION
 
 if ! [ -x $CPPFRONT ]; then
     log_info "compiling cppfront..."
-    cd $ROOT_DIR/.cache/repos/hsutter/cppfront/source
+    cd $ROOT_DIR/cppfront/source
     $CPP2B_COMPILER \
         -std=c++23                                    \
         -stdlib=libc++                                \
@@ -176,6 +149,20 @@ if ! [ -f $MODULES_DIR/nlohmann.json.pcm ]; then
     cd $ROOT_DIR
 fi
 
+if ! [ -f $MODULES_DIR/cpp2b_build_info_parser.pcm ]; then
+    log_info "compiling cpp2b_build_info_parser module..."
+
+    $CPP2B_COMPILER                        \
+        -stdlib=libc++                       \
+        -std=c++23                           \
+        -fexperimental-library               \
+        -isystem $LLVM_ROOT/include/c++/v1  \
+        -fprebuilt-module-path=$MODULES_DIR  \
+        -I"$CPPFRONT_INCLUDE_DIR"            \
+        "$ROOT_DIR/src/cpp2b_build_info_parser.cppm"  \
+        --precompile -o $MODULES_DIR/cpp2b_build_info_parser.pcm
+fi
+
 log_info "compiling cpp2b module..."
 if [ -f "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm" ]; then
     rm "$ROOT_DIR/.cache/cpp2/source/_build/cpp2b.cppm"
@@ -199,10 +186,16 @@ log_info "compiling..."
 $CPP2B_COMPILER                                   \
     -g                                            \
     -stdlib=libc++                                \
+    -fmodule-file=cpp2b="$MODULES_DIR/cpp2b.pcm"   \
+    -fmodule-file=dylib="$MODULES_DIR/dylib.pcm"   \
+    -fmodule-file=std.compat="$MODULES_DIR/std.compat.pcm" \
+    -fmodule-file=nlohmann.json="$MODULES_DIR/nlohmann.json.pcm" \
+    -fmodule-file=cpp2b_build_info_parser="$MODULES_DIR/cpp2b_build_info_parser.pcm" \
     "$MODULES_DIR/cpp2b.pcm"                      \
     "$MODULES_DIR/dylib.pcm"                      \
     "$MODULES_DIR/std.compat.pcm"                 \
     "$MODULES_DIR/nlohmann.json.pcm"              \
+    "$MODULES_DIR/cpp2b_build_info_parser.pcm"             \
     "$ROOT_DIR/.cache/cpp2/source/src/main.cpp"   \
     -std=c++23                                    \
     -fexperimental-library                        \

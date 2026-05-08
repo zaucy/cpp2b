@@ -2,6 +2,7 @@ import std.compat;
 import cpp2b;
 import dylib;
 import nlohmann.json;
+import cpp2b_build_info_parser;
 
 fs: namespace == std::filesystem;
 json: type == nlohmann::json;
@@ -95,15 +96,37 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 	return opt*;
 }
 
-GitHubRepo: type = {
-	private repo_: fs::path;
+GitRepo: type = {
+	private repo_name: fs::path = ();
+	private clone_url: std::string = ();
+	private branch: std::string = ();
 
-	operator=: (out this, repo, branch) = {
-		repo_ = repo;
+	operator=: (out this, repo: std::string_view, repo_branch: std::string_view) = {
+		branch = std::string(repo_branch);
+		clone_url = std::string(repo);
 
+		m: git_clone_url_matcher = ();
+		result := m.regex.match(clone_url);
+
+		if result.matched {
+			host := result.group(1);
+			owner := result.group(2);
+			name := result.group(3);
+			repo_name = fs::path(host) / owner / name;
+		} else {
+			log_error("invalid git clone url: {}", clone_url);
+			log_error("expected format: [proto://]host/owner/repo[.git]");
+			std::exit(1);
+		}
+	}
+
+	fetch: (this) = {
 		if !fs::exists(path() / ".git") {
 			ensure_dir(path());
-			git_("clone --depth=1 --branch=(branch)$ --filter=blob:none --sparse https://github.com/(repo_.generic_string())$ .");
+			git_("clone --depth=1 --branch=(branch)$ --filter=blob:none --sparse (clone_url)$ .");
+		} else {
+			git_("fetch origin (branch)$ --depth=1");
+			git_("checkout FETCH_HEAD");
 		}
 	}
 
@@ -116,7 +139,7 @@ GitHubRepo: type = {
 	}
 
 	path: (this) -> fs::path = {
-		return fs::current_path() / ".cache" / "cpp2" / "repos" / repo_;
+		return fs::current_path() / ".cache" / "cpp2" / "repos" / repo_name;
 	}
 
 	add: (this, subpath: std::string) = {
@@ -682,8 +705,7 @@ build_binary_result: @struct type = {
 	duration: std::chrono::milliseconds = ();
 }
 
-cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> std::string = {
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 
@@ -704,10 +726,9 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path) -> 
 	return cmd_str;
 }
 
-unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_info, bin_outpath: fs::path) -> std::string = {
+unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
 	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
 	sys_lib_dir := get_llvm_root() / "lib";
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = std::format("{} -stdlib=libc++ -fPIC", compiler_cmd);
@@ -726,7 +747,7 @@ unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_inf
 }
 
 
-build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
+build_binary: (info: cpp2b_source_binary_info, cppfront_include_dir: fs::path) -> build_binary_result = {
 	compiler :== cpp2b::compiler();
 	bin_basename: fs::path = info.name();
 	if bin_basename.extension().empty() {
@@ -741,9 +762,9 @@ build_binary: (info: cpp2b_source_binary_info) -> build_binary_result = {
 	d := fs::absolute(modules_dir());
 
 	cmd_str: std::string = "";
-	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_binary_cmd(info, bin_outpath); }
-	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_binary_cmd("clang-19", info, bin_outpath); }
-	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_binary_cmd("gcc", info, bin_outpath); }
+	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_binary_cmd(info, bin_outpath, cppfront_include_dir); }
+	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_binary_cmd("clang-19", info, bin_outpath, cppfront_include_dir); }
+	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_binary_cmd("gcc", info, bin_outpath, cppfront_include_dir); }
 	else { log_error("Unsupported compiler"); std::exit(1); }
 
 	cmd_str += " (cmd_log_output(fs::absolute(log_path)))$";
@@ -873,10 +894,16 @@ cpp2b_detail_git_clone: (
 
 	m: git_clone_url_matcher = ();
 	result := m.regex.match(repo_impl*.clone_url);
-	
-	repo_impl*.clone_host = result.group(1);
-	repo_impl*.clone_owner_dirname = result.group(2);
-	repo_impl*.clone_repo_dirname = result.group(3);
+
+	if result.matched {
+		repo_impl*.clone_host = result.group(1);
+		repo_impl*.clone_owner_dirname = result.group(2);
+		repo_impl*.clone_repo_dirname = result.group(3);
+	} else {
+		log_error("invalid git clone url: {}", repo_impl*.clone_url);
+		log_error("expected format: [proto://]host/owner/repo[.git]");
+		std::exit(1);
+	}
 
 	impl*.git_repos.emplace_back(repo_impl);
 
@@ -897,15 +924,15 @@ cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
 	// empty. this is just so we can decltype the signature
 }
 
-cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path) -> std::string = {
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
+cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL";
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
 		imp_obj := d / ("(imp)$.obj");
-		cmd_str += " /reference \"(imp_bmi.string())$\" \"(imp_obj.string())$\"";
+		cmd_str += " /reference \"(imp_bmi.string())$\"";
+		cmd_str += " \"(imp_obj.string())$\"";
 	}
 	cmd_str += " \"(transpiled_src .string())$\"";
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
@@ -916,10 +943,9 @@ cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path
 }
 
 
-unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_build_info, bin_outpath: fs::path) -> std::string = {
+unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_build_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
 	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
 	sys_lib_dir := get_llvm_root() / "lib";
-	cppfront_include_dir := fs::absolute(".cache/cpp2/repos/hsutter/cppfront/include");
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = std::format("{} -stdlib=libc++ -shared", compiler_cmd);
@@ -938,7 +964,7 @@ unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_buil
 }
 
 
-build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
+build_build_script: (info: cpp2b_source_build_info, cppfront_include_dir: fs::path) -> build_binary_result = {
 	compiler :== cpp2b::compiler();
 	bin_outpath := fs::absolute(".cache/cpp2/bin") / fs::path(info.src).replace_extension(shared_library_extension());
 	log_path := fs::absolute(".cache/cpp2/log/compile") / fs::path(info.src).replace_extension(".log");
@@ -947,9 +973,9 @@ build_build_script: (info: cpp2b_source_build_info) -> build_binary_result = {
 
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "";
-	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_build_script_cmd(info, bin_outpath); }
-	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_build_script_cmd("clang-19", info, bin_outpath); }
-	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_build_script_cmd("gcc", info, bin_outpath); }
+	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_build_script_cmd(info, bin_outpath, cppfront_include_dir); }
+	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_build_script_cmd("clang-19", info, bin_outpath, cppfront_include_dir); }
+	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_build_script_cmd("gcc", info, bin_outpath, cppfront_include_dir); }
 	else { log_error("Unsupported compiler"); std::exit(1); }
 
 	cmd_str += " (cmd_log_output(fs::relative(log_path)))$";
@@ -982,6 +1008,7 @@ full_build_info: @struct type = {
 	mods: std::vector<cpp2b_source_module_info> = ();
 	build_scripts: std::vector<cpp2b_source_build_info> = ();
 	unknowns: std::vector<cpp2b_source_unknown_info> = ();
+	cppfront_include_dir: fs::path = ();
 
 	bin_results: std::vector<build_binary_result> = ();
 
@@ -1079,11 +1106,67 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
-	(repo := GitHubRepo("hsutter/cppfront", "v0.8.1")) { 
-		repo.add("source");
-		repo.add("include");
+	cppfront_url: std::string = "https://github.com/hsutter/cppfront.git";
+	cppfront: std::string = "v0.8.1";
+
+	expect_file("build.cpp2");
+	build_info_variant := cpp2b_parse_source("build.cpp2");
+	assert(build_info_variant.is_build());
+
+	build_info := build_info_variant.build();
+	if build_info.constants.contains("cppfront_url") {
+		cppfront_url = build_info.constants.at("cppfront_url");
+	}
+	if build_info.constants.contains("cppfront") {
+		cppfront = build_info.constants.at("cppfront");
+	}
+
+	cppfront_info_path: fs::path = ".cache/cpp2/tools/cppfront.info";
+	cppfront_bin: fs::path = ".cache/cpp2/tools/cppfront(executable_extension())$";
+	needs_recompile: bool = false;
+	if fs::exists(cppfront_info_path) && fs::exists(cppfront_bin) {
+		info_stream: std::ifstream = cppfront_info_path;
+		stored_url: std::string = ();
+		stored_cppfront: std::string = ();
+		std::getline(info_stream, stored_url);
+		std::getline(info_stream, stored_cppfront);
+		if stored_url != cppfront_url {
+			log_info("cppfront_url changed: {} -> {}", stored_url, cppfront_url);
+			needs_recompile = true;
+		}
+		if stored_cppfront != cppfront {
+			log_info("cppfront changed: {} -> {}", stored_cppfront, cppfront);
+			needs_recompile = true;
+		}
+	} else {
+		needs_recompile = true;
+	}
+
+	if needs_recompile {
+		if fs::exists(cppfront_bin) {
+			fs::remove(cppfront_bin);
+		}
+	}
+
+	(repo := GitRepo(cppfront_url, cppfront)) { 
+		if needs_recompile || !fs::exists(repo.path() / ".git") {
+			repo.fetch();
+			repo.add("source");
+			repo.add("include");
+		}
+
 		exit_code = ensure_cppfront(repo.path());
 		if exit_code != 0 { return; }
+
+		if needs_recompile {
+			info_out: std::ofstream = (cppfront_info_path, std::ios::binary);
+			info_out << cppfront_url << "\n" << cppfront << "\n";
+		}
+
+		stuff.cppfront_include_dir = repo.path() / "source";
+		if !fs::exists(stuff.cppfront_include_dir) {
+			stuff.cppfront_include_dir = repo.path() / "include";
+		}
 	}
 
 	ensure_std_modules();
@@ -1106,7 +1189,8 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		if p.extension() == ".cpp2" {
 			rel_path := fs::relative(p, fs::current_path());
 			for rel_path do(rel_path_comp) {
-				if rel_path_comp.string().starts_with(".") {
+				comp := rel_path_comp.string();
+				if comp.starts_with(".") || comp == "cppfront" || comp == "dist" {
 					continue src_loop;
 				}
 			}
@@ -1183,7 +1267,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		build_script_futures.emplace_back(
 			std::ref(build_script),
-			std::async(std::launch::async, build_build_script, build_script)
+			std::async(std::launch::async, build_build_script, build_script, stuff.cppfront_include_dir)
 		);
 	}
 
@@ -1330,7 +1414,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		bin_futures.emplace_back(
 			std::ref(bin),
-			std::async(std::launch::async, build_binary, bin)
+			std::async(std::launch::async, build_binary, bin, stuff.cppfront_include_dir)
 		);
 	}
 
@@ -1593,6 +1677,7 @@ cpp2b_source_binary_info: @struct type = {
 cpp2b_source_build_info: @struct type = {
 	src: fs::path = ();
 	imports: std::vector<std::string> = ();
+	constants: std::map<std::string, std::string> = ();
 }
 
 cpp2b_source_unknown_info: @struct type = {
@@ -1683,91 +1768,43 @@ cpp2b_parse_cpp1_module_statements: (copy stream: std::ifstream) -> (module_name
 }
 
 cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
-	stream: std::ifstream = source_file;
-	statement: std::string = "";
-	imports: std::vector<std::string> = ();
+	info := cpp2b_build_info_parser::parse_source(source_file.string());
 
-	// without this cppfront thinks stream is never used
-	assert(stream);
+	if std::ranges::find(info.imports, "std") == info.imports.end() {
+		info.imports.emplace_back("std");
+	}
+
+	if std::ranges::find(info.imports, "std.compat") == info.imports.end() {
+		info.imports.emplace_back("std.compat");
+	}
 
 	result: cpp2b_source_info = ();
 	result.set_unknown(cpp2b_source_unknown_info(source_file));
 
-	while std::getline(stream, statement, ';') {
-		trimmed_statement := statement.ltrim();
-		kw_import: std::string_view = "import";
-
-		if trimmed_statement.starts_with(kw_import) {
-			import_name := trimmed_statement.lstrip(kw_import.size()).ltrim().rtrim();
-			if !contains_any_whitespace(import_name) {
-				imports.emplace_back(import_name);
-			}
-		}
-	}
-
-	if std::ranges::find(imports, "std") == imports.end() {
-		imports.emplace_back("std");
-	}
-
-	if std::ranges::find(imports, "std.compat") == imports.end() {
-		imports.emplace_back("std.compat");
-	}
-
-	if source_file.filename() == "build.cpp2" {
+	if info.kind == cpp2b_build_info_parser::source_kind::build {
 		build_info: cpp2b_source_build_info = ();
 		build_info.src = source_file;
-		build_info.imports = imports;
+		build_info.imports = info.imports;
+		build_info.constants = info.constants;
 		result.set_build(build_info);
 		return result;
 	}
 
-	stream.clear();
-	stream.seekg(0);
-
-	while std::getline(stream, statement, ';') {
-		trimmed_statement := statement.ltrim();
-		kw_export: std::string_view = "export";
-		kw_module: std::string_view = "module";
-
-		if trimmed_statement.starts_with(kw_export) {
-			trimmed_statement = trimmed_statement.lstrip(kw_export.size()).ltrim();
-			if !trimmed_statement.starts_with(kw_module) { break; }
-
-			module_name := trimmed_statement.lstrip(kw_module.size()).ltrim();
-			partition_start := module_name.find(':');
-			if partition_start != std::string::npos {
-				module_name = module_name.substr(0, partition_start).rtrim();
-			} else {
-				module_name = module_name.rtrim();
-			}
-
-			mod_info: cpp2b_source_module_info = ();
-
-			mod_info.name = std::string(module_name);
-			mod_info.imports = imports;
-			mod_info.exported = true;
-
-			result.set_mod(mod_info);
-			return result;
-		}
+	if info.kind == cpp2b_build_info_parser::source_kind::module {
+		mod_info: cpp2b_source_module_info = ();
+		mod_info.name = info.module_name;
+		mod_info.imports = info.imports;
+		mod_info.exported = info.exported;
+		result.set_mod(mod_info);
+		return result;
 	}
 
-	stream.clear();
-	stream.seekg(0);
-
-	line: std::string = ();
-	while std::getline(stream, line) {
-		trimmed_line := line.ltrim();
-		if trimmed_line.starts_with("main") {
-			after_main := trimmed_line.substr(4).ltrim();
-			if after_main.empty() || after_main[0] == ':' {
-				bin_info: cpp2b_source_binary_info = ();
-				bin_info.src = source_file;
-				bin_info.imports = imports;
-				result.set_bin(bin_info);
-				return result;
-			}
-		}
+	if info.kind == cpp2b_build_info_parser::source_kind::binary {
+		bin_info: cpp2b_source_binary_info = ();
+		bin_info.src = source_file;
+		bin_info.imports = info.imports;
+		result.set_bin(bin_info);
+		return result;
 	}
 
 	return result;

@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: crate-ci/typos@cfe759ac8dd421e203cc293a373396fbc6fe0d4b # v1.22.7
 
   build-script-windows:
@@ -25,6 +27,8 @@ jobs:
     runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - run: .\build.cmd
       - uses: actions/upload-artifact@v4
         with:
@@ -39,6 +43,8 @@ jobs:
     runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/download-artifact@v4
         with:
           name: cpp2b-windows-x86_64
@@ -56,6 +62,8 @@ jobs:
       - run: rm ./llvm.sh
       - run: sudo apt-get install libc++-19-dev ninja-build libclang-19-dev -y
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - run: ./build.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -75,6 +83,8 @@ jobs:
       - run: rm ./llvm.sh
       - run: sudo apt-get install libc++-19-dev ninja-build libclang-19-dev -y
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/download-artifact@v4
         with:
           name: cpp2b-linux-x86_64

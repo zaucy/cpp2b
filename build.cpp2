@@ -1,7 +1,12 @@
 import cpp2b.build;
 
+cppfront :== "v0.8.1";
+
 build: (inout b: cpp2b::build) -> void = {
 	_ = b.cpp1_module().source_path("src/dylib.cppm");
 	_ = b.cpp1_module().source_path("src/nlohmann.json.cppm");
+	_ = b.cpp1_module()
+		.source_path("src/cpp2b_build_info_parser.cppm")
+		.include_directory("cppfront/source");
 	b.binary_name("src/main", "cpp2b");
 }

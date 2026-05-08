@@ -1,6 +1,7 @@
 [files]
 extend-exclude = [
 	"src/nlohmann.json.cppm",
+	"cppfront",
 ]
 
 [default]
