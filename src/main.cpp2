@@ -2,6 +2,7 @@ import std.compat;
 import cpp2b;
 import dylib;
 import nlohmann.json;
+import xxh3;
 
 fs: namespace == std::filesystem;
 json: type == nlohmann::json;
@@ -61,6 +62,17 @@ expect_file: (f: fs::path) = {
 		log_error("make sure cpp2b is installed correctly");
 		std::exit(1);
 	}
+}
+
+hash_file: (p: fs::path) -> u64 = {
+	f: std::ifstream = (p, std::ios::binary | std::ios::ate);
+	size: size_t = unchecked_cast<size_t>(f.tellg());
+	f.seekg(0, std::ios::beg);
+	buffer: std::vector<char> = ();
+	buffer.resize(size);
+	f.read(buffer.data(), size);
+	if f.fail() { return 0; }
+	return XXH3_64bits(buffer.data(), buffer.size());
 }
 
 modules_dir: () = modules_dir(fs::current_path());
