@@ -103,20 +103,20 @@ GitRepo: type = {
 
 	operator=: (out this, repo: std::string_view, repo_branch: std::string_view) = {
 		branch = std::string(repo_branch);
-		if repo.find("://") != std::string_view::npos {
-			clone_url = std::string(repo);
-			last_slash := repo.find_last_of('/');
-			if last_slash != std::string_view::npos {
-				repo_name = std::string(repo.substr(last_slash + 1));
-				if repo_name.string().ends_with(".git") {
-					repo_name = repo_name.string().substr(0, repo_name.string().size() - 4);
-				}
-			} else {
-				repo_name = std::string(repo);
-			}
+		clone_url = std::string(repo);
+
+		m: git_clone_url_matcher = ();
+		result := m.regex.match(clone_url);
+
+		if result.matched {
+			host := result.group(1);
+			owner := result.group(2);
+			name := result.group(3);
+			repo_name = fs::path(host) / owner / name;
 		} else {
-			clone_url = "https://github.com/(repo)$";
-			repo_name = std::string(repo);
+			log_error("invalid git clone url: {}", clone_url);
+			log_error("expected format: [proto://]host/owner/repo[.git]");
+			std::exit(1);
 		}
 	}
 
@@ -894,10 +894,16 @@ cpp2b_detail_git_clone: (
 
 	m: git_clone_url_matcher = ();
 	result := m.regex.match(repo_impl*.clone_url);
-	
-	repo_impl*.clone_host = result.group(1);
-	repo_impl*.clone_owner_dirname = result.group(2);
-	repo_impl*.clone_repo_dirname = result.group(3);
+
+	if result.matched {
+		repo_impl*.clone_host = result.group(1);
+		repo_impl*.clone_owner_dirname = result.group(2);
+		repo_impl*.clone_repo_dirname = result.group(3);
+	} else {
+		log_error("invalid git clone url: {}", repo_impl*.clone_url);
+		log_error("expected format: [proto://]host/owner/repo[.git]");
+		std::exit(1);
+	}
 
 	impl*.git_repos.emplace_back(repo_impl);
 
@@ -1100,8 +1106,8 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	build_cpp2_dir := fs::current_path();
 	stuff = ();
 
-	cppfront_url: std::string = "hsutter/cppfront";
-	cppfront_version: std::string = "v0.8.1";
+	cppfront_url: std::string = "https://github.com/hsutter/cppfront.git";
+	cppfront: std::string = "v0.8.1";
 
 	expect_file("build.cpp2");
 	build_info_variant := cpp2b_parse_source("build.cpp2");
@@ -1111,8 +1117,8 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	if build_info.constants.contains("cppfront_url") {
 		cppfront_url = build_info.constants.at("cppfront_url");
 	}
-	if build_info.constants.contains("cppfront_version") {
-		cppfront_version = build_info.constants.at("cppfront_version");
+	if build_info.constants.contains("cppfront") {
+		cppfront = build_info.constants.at("cppfront");
 	}
 
 	cppfront_info_path: fs::path = ".cache/cpp2/tools/cppfront.info";
@@ -1121,15 +1127,15 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	if fs::exists(cppfront_info_path) && fs::exists(cppfront_bin) {
 		info_stream: std::ifstream = cppfront_info_path;
 		stored_url: std::string = ();
-		stored_version: std::string = ();
+		stored_cppfront: std::string = ();
 		std::getline(info_stream, stored_url);
-		std::getline(info_stream, stored_version);
+		std::getline(info_stream, stored_cppfront);
 		if stored_url != cppfront_url {
 			log_info("cppfront_url changed: {} -> {}", stored_url, cppfront_url);
 			needs_recompile = true;
 		}
-		if stored_version != cppfront_version {
-			log_info("cppfront_version changed: {} -> {}", stored_version, cppfront_version);
+		if stored_cppfront != cppfront {
+			log_info("cppfront changed: {} -> {}", stored_cppfront, cppfront);
 			needs_recompile = true;
 		}
 	} else {
@@ -1142,7 +1148,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 		}
 	}
 
-	(repo := GitRepo(cppfront_url, cppfront_version)) { 
+	(repo := GitRepo(cppfront_url, cppfront)) { 
 		if needs_recompile || !fs::exists(repo.path() / ".git") {
 			repo.fetch();
 			repo.add("source");
@@ -1154,7 +1160,7 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 
 		if needs_recompile {
 			info_out: std::ofstream = (cppfront_info_path, std::ios::binary);
-			info_out << cppfront_url << "\n" << cppfront_version << "\n";
+			info_out << cppfront_url << "\n" << cppfront << "\n";
 		}
 
 		stuff.cppfront_include_dir = repo.path() / "source";
