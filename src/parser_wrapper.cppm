@@ -77,13 +77,27 @@ source_info parse_source(const std::string& filename) {
         }
         j += 3;
       }
+      // identifier :== string_literal ;
+      else if (j + 3 < all_tokens.size() &&
+          all_tokens[j].type() == cpp2::lexeme::Identifier &&
+          all_tokens[j+1].type() == cpp2::lexeme::Colon &&
+          all_tokens[j+2].type() == cpp2::lexeme::EqualComparison &&
+          all_tokens[j+3].type() == cpp2::lexeme::StringLiteral) {
+          auto name = all_tokens[j].as_string_view();
+          auto value_raw = all_tokens[j+3].as_string_view();
+          if (value_raw.size() >= 2) {
+              auto value = std::string(value_raw.substr(1, value_raw.size() - 2));
+              result.constants[std::string(name)] = value;
+          }
+          j += 3;
+      }
       // identifier : type == string_literal ;
-      else if(j + 5 < all_tokens.size() &&
-              all_tokens[j].type() == cpp2::lexeme::Identifier &&
-              all_tokens[j + 1].type() == cpp2::lexeme::Colon &&
-              all_tokens[j + 3].type() == cpp2::lexeme::EqualComparison &&
-              all_tokens[j + 4].type() == cpp2::lexeme::StringLiteral &&
-              all_tokens[j + 5].type() == cpp2::lexeme::Semicolon) {
+      else if (j + 5 < all_tokens.size() &&
+          all_tokens[j].type() == cpp2::lexeme::Identifier &&
+          all_tokens[j+1].type() == cpp2::lexeme::Colon &&
+          all_tokens[j+3].type() == cpp2::lexeme::EqualComparison &&
+          all_tokens[j+4].type() == cpp2::lexeme::StringLiteral &&
+          all_tokens[j+5].type() == cpp2::lexeme::Semicolon) {
         auto name = all_tokens[j].as_string_view();
         auto value_raw = all_tokens[j + 4].as_string_view();
         if(value_raw.size() >= 2) {
