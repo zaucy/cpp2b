@@ -60,33 +60,6 @@ fi
 
 log_info "using compiler '$CPP2B_COMPILER' version '$COMPILER_VERSION'"
 
-function ensure_gh_repo() {
-    local repo=$1
-    local branch=$2
-    local repo_path=$ROOT_DIR/.cache/repos/$repo
-    if ! [ -d $repo_path ]; then
-        mkdir -p $repo_path
-        git clone --quiet --depth=1 --branch=$branch --filter=blob:none --sparse https://github.com/$repo $repo_path
-    fi
-}
-
-function ensure_gh_repo_subdir() {
-    local repo=$1
-    local repo_path=$ROOT_DIR/.cache/repos/$repo
-    local repo_subdir=$2
-    local repo_subdir_path=$repo_path/$repo_subdir
-    if ! [ -d $repo_subdir_path ]; then
-        cd $repo_path
-        log_info "checking out repo $repo/$reposubdir"
-        git sparse-checkout add $repo_subdir
-        cd $ROOT_DIR
-    fi
-}
-
-# ensure_gh_repo "hsutter/cppfront" "v0.8.1"
-# ensure_gh_repo_subdir "hsutter/cppfront" "source"
-# ensure_gh_repo_subdir "hsutter/cppfront" "include"
-
 CPPFRONT_INCLUDE_DIR=$ROOT_DIR/cppfront/source
 
 LLVM_ROOT=/usr/lib/llvm-$COMPILER_MAJOR_VERSION
