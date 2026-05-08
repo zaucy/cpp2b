@@ -1,10 +1,10 @@
 module;
 #include "parse.h"
-export module parser_wrapper;
+export module cpp2b_build_info_parser;
 
 import std;
 
-export namespace parser_wrapper {
+export namespace cpp2b_build_info_parser {
 
 enum class source_kind { unknown, module, binary, build };
 
@@ -132,4 +132,4 @@ source_info parse_source(const std::string& filename) {
   return result;
 }
 
-} // namespace parser_wrapper
+} // namespace cpp2b_build_info_parser

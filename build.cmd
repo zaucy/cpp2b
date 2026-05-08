@@ -140,18 +140,18 @@ if %ERRORLEVEL% neq 0 (
     exit %ERRORLEVEL%
 )
 
-echo INFO: compiling parser_wrapper module...
+echo INFO: compiling cpp2b_build_info_parser module...
 pushd %modules_dir%
 cl /nologo ^
     /std:c++latest /W4 /MDd /EHsc ^
     -I"%cppfront_include_dir%" ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
-    /c /interface /TP "%root_dir%src\parser_wrapper.cppm" > NUL
+    /c /interface /TP "%root_dir%src\cpp2b_build_info_parser.cppm" > NUL
 popd
 
 if %ERRORLEVEL% neq 0 (
-    echo ERROR: failed to compile parser_wrapper module
+    echo ERROR: failed to compile cpp2b_build_info_parser module
     exit %ERRORLEVEL%
 )
 
@@ -182,7 +182,7 @@ cl /nologo "%root_dir%.cache/cpp2/source/src/main.cpp" ^
     /reference "%modules_dir%\dylib.ifc" "%modules_dir%\dylib.obj" ^
     /reference "%modules_dir%\nlohmann.json.ifc" "%modules_dir%\nlohmann.json.obj" ^
     /reference "%modules_dir%\cpp2b.ifc" "%modules_dir%\cpp2b.obj" ^
-    /reference "%modules_dir%\parser_wrapper.ifc" "%modules_dir%\parser_wrapper.obj" ^
+    /reference "%modules_dir%\cpp2b_build_info_parser.ifc" "%modules_dir%\cpp2b_build_info_parser.obj" ^
     /std:c++latest /W4 /MDd /EHsc ^
     /DEBUG:FULL /Zi /FC ^
     -I"%cppfront_include_dir%" ^

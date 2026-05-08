@@ -149,8 +149,8 @@ if ! [ -f $MODULES_DIR/nlohmann.json.pcm ]; then
     cd $ROOT_DIR
 fi
 
-if ! [ -f $MODULES_DIR/parser_wrapper.pcm ]; then
-    log_info "compiling parser_wrapper module..."
+if ! [ -f $MODULES_DIR/cpp2b_build_info_parser.pcm ]; then
+    log_info "compiling cpp2b_build_info_parser module..."
 
     $CPP2B_COMPILER                        \
         -stdlib=libc++                       \
@@ -159,8 +159,8 @@ if ! [ -f $MODULES_DIR/parser_wrapper.pcm ]; then
         -isystem $LLVM_ROOT/include/c++/v1  \
         -fprebuilt-module-path=$MODULES_DIR  \
         -I"$CPPFRONT_INCLUDE_DIR"            \
-        "$ROOT_DIR/src/parser_wrapper.cppm"  \
-        --precompile -o $MODULES_DIR/parser_wrapper.pcm
+        "$ROOT_DIR/src/cpp2b_build_info_parser.cppm"  \
+        --precompile -o $MODULES_DIR/cpp2b_build_info_parser.pcm
 fi
 
 log_info "compiling cpp2b module..."
@@ -190,12 +190,12 @@ $CPP2B_COMPILER                                   \
     -fmodule-file=dylib="$MODULES_DIR/dylib.pcm"   \
     -fmodule-file=std.compat="$MODULES_DIR/std.compat.pcm" \
     -fmodule-file=nlohmann.json="$MODULES_DIR/nlohmann.json.pcm" \
-    -fmodule-file=parser_wrapper="$MODULES_DIR/parser_wrapper.pcm" \
+    -fmodule-file=cpp2b_build_info_parser="$MODULES_DIR/cpp2b_build_info_parser.pcm" \
     "$MODULES_DIR/cpp2b.pcm"                      \
     "$MODULES_DIR/dylib.pcm"                      \
     "$MODULES_DIR/std.compat.pcm"                 \
     "$MODULES_DIR/nlohmann.json.pcm"              \
-    "$MODULES_DIR/parser_wrapper.pcm"             \
+    "$MODULES_DIR/cpp2b_build_info_parser.pcm"             \
     "$ROOT_DIR/.cache/cpp2/source/src/main.cpp"   \
     -std=c++23                                    \
     -fexperimental-library                        \

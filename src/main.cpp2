@@ -2,7 +2,7 @@ import std.compat;
 import cpp2b;
 import dylib;
 import nlohmann.json;
-import parser_wrapper;
+import cpp2b_build_info_parser;
 
 fs: namespace == std::filesystem;
 json: type == nlohmann::json;
@@ -1768,7 +1768,7 @@ cpp2b_parse_cpp1_module_statements: (copy stream: std::ifstream) -> (module_name
 }
 
 cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
-	info := parser_wrapper::parse_source(source_file.string());
+	info := cpp2b_build_info_parser::parse_source(source_file.string());
 
 	if std::ranges::find(info.imports, "std") == info.imports.end() {
 		info.imports.emplace_back("std");
@@ -1781,7 +1781,7 @@ cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 	result: cpp2b_source_info = ();
 	result.set_unknown(cpp2b_source_unknown_info(source_file));
 
-	if info.kind == parser_wrapper::source_kind::build {
+	if info.kind == cpp2b_build_info_parser::source_kind::build {
 		build_info: cpp2b_source_build_info = ();
 		build_info.src = source_file;
 		build_info.imports = info.imports;
@@ -1790,7 +1790,7 @@ cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 		return result;
 	}
 
-	if info.kind == parser_wrapper::source_kind::module {
+	if info.kind == cpp2b_build_info_parser::source_kind::module {
 		mod_info: cpp2b_source_module_info = ();
 		mod_info.name = info.module_name;
 		mod_info.imports = info.imports;
@@ -1799,7 +1799,7 @@ cpp2b_parse_source: (source_file: fs::path) -> cpp2b_source_info = {
 		return result;
 	}
 
-	if info.kind == parser_wrapper::source_kind::binary {
+	if info.kind == cpp2b_build_info_parser::source_kind::binary {
 		bin_info: cpp2b_source_binary_info = ();
 		bin_info.src = source_file;
 		bin_info.imports = info.imports;
