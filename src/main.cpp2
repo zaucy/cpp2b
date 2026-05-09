@@ -104,6 +104,14 @@ executable_extension: () -> std::string_view = {
 	}
 }
 
+obj_extension: () -> std::string_view = {
+	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+		return ".obj";
+	} else {
+		return ".o";
+	}
+}
+
 cmd_exists: (cmd: std::string) -> bool = {
 	check_cmd: std::string = "";
 	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
@@ -409,9 +417,22 @@ unix_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, compiler_cmd: 
 
 	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", fs::absolute(d).string());
 
-	// Clang uses .pcm for modules
-	cmd_str += std::format(" -x c++-module \"{}\"", fs::absolute(impl.source_path).string());
-	cmd_str += std::format(" --precompile -o \"{}\"", fs::absolute(bmi_path).string());
+	// Clang uses .pcm for modules. If it's clang, also generate the object file.
+	if compiler_cmd.find("clang") != std::string::npos {
+		obj_path := bmi_path;
+		obj_path.replace_extension(obj_extension());
+		cmd_str += std::format(" -x c++-module \"{}\" -c -o \"{}\" -fmodule-output=\"{}\"", 
+			fs::absolute(impl.source_path).string(),
+			fs::absolute(obj_path).string(),
+			fs::absolute(bmi_path).string()
+		);
+	} else {
+		cmd_str += std::format(" -x c++-module \"{}\" --precompile -o \"{}\"", 
+			fs::absolute(impl.source_path).string(),
+			fs::absolute(bmi_path).string()
+		);
+	}
+
 	return cmd_str;
 }
 
@@ -688,7 +709,11 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 
 unix_compile_cppfront: (cc: std::string_view, cppfront_source: fs::path, out_cppfront_binary: fs::path, log_path: fs::path) -> int = {
 	cwd := fs::current_path();
-	cmd_str: std::string = "(cc)$ -lstdc++ -lc -lm -std=c++20 cppfront.cpp -o (out_cppfront_binary.string())$ (cmd_log_output(fs::absolute(log_path)))$";
+	cmd_str: std::string = std::format("{} -std=c++20 cppfront.cpp -o {}", cc, out_cppfront_binary.string());
+	if constexpr cpp2b::host_platform() != cpp2b::platform::windows {
+		cmd_str += " -lstdc++ -lc -lm";
+	}
+	cmd_str += cmd_log_output(fs::absolute(log_path));
 	fs::current_path(cppfront_source / "source");
 	exit_code := std::system(cmd_str.c_str());
 	fs::current_path(cwd);
@@ -827,6 +852,12 @@ unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_inf
 
 	for info.imports do (imp: std::string) {
 		cmd_str += std::format(" -fmodule-file={}=\"{}\"", imp, (d / ("(imp)$.pcm")).string());
+		
+		// Link the object file if it exists
+		obj_path := d / (imp + std::string(obj_extension()));
+		if fs::exists(obj_path) {
+			cmd_str += " \"" + obj_path.string() + "\"";
+		}
 	}
 	cmd_str += " \"(transpiled_src.string())$\"";
 	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", d.string());
@@ -1052,6 +1083,12 @@ unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_buil
 
 	for info.imports do (imp: std::string) {
 		cmd_str += std::format(" -fmodule-file={}=\"{}\"", imp, (d / ("(imp)$.pcm")).string());
+		
+		// Link the object file if it exists
+		obj_path := d / (imp + std::string(obj_extension()));
+		if fs::exists(obj_path) {
+			cmd_str += " \"" + obj_path.string() + "\"";
+		}
 	}
 	cmd_str += " \"(transpiled_src.string())$\"";
 	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", d.string());
