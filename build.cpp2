@@ -1,10 +1,8 @@
 import cpp2b.build;
 
 cppfront :== "v0.8.1";
-compiler :== inspect cpp2b::host_platform() -> cpp2b::compiler_type {
-    is cpp2b::platform::windows = cpp2b::compiler_type::msvc;
-    is _ = cpp2b::compiler_type::clang;
-};
+// compiler :== cpp2b::compiler_choice::preferred;
+compiler :== cpp2b::compiler_choice::clang;
 
 build: (inout b: cpp2b::build) -> void = {
 	_ = b.cpp1_module().source_path("src/dylib.cppm");

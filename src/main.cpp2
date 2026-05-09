@@ -1119,10 +1119,22 @@ do_build: (targets: std::vector<std::string>) -> (stuff: full_build_info, exit_c
 	}
 	if build_info.constants.contains("compiler") {
 		c_str := build_info.constants.at("compiler");
-		if      c_str == "msvc"  { stuff.active_compiler = cpp2b::compiler_type::msvc; }
-		else if c_str == "clang" { stuff.active_compiler = cpp2b::compiler_type::clang; }
-		else if c_str == "gcc"   { stuff.active_compiler = cpp2b::compiler_type::gcc; }
-		else { log_error("unknown compiler '{}'", c_str); std::exit(1); }
+		if c_str == "msvc" {
+			stuff.active_compiler = cpp2b::compiler_type::msvc;
+		} else if c_str == "clang" {
+			stuff.active_compiler = cpp2b::compiler_type::clang;
+		} else if c_str == "gcc" {
+			stuff.active_compiler = cpp2b::compiler_type::gcc;
+		} else if c_str == "preferred" {
+			if cpp2b::host_platform() == cpp2b::platform::windows {
+				stuff.active_compiler = cpp2b::compiler_type::msvc;
+			} else {
+				stuff.active_compiler = cpp2b::compiler_type::clang;
+			}
+		} else {
+			log_error("unknown compiler '{}'", c_str);
+			std::exit(1);
+		}
 		log_info("using compiler {}", c_str);
 	}
 
