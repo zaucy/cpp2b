@@ -2,6 +2,7 @@ module;
 
 #ifdef _MSC_VER
 #  include <Windows.h>
+#  include <stdlib.h>
 #else
 #  include <stdlib.h>
 #  include <unistd.h>
@@ -12,9 +13,7 @@ export module cpp2b;
 import std;
 import std.compat;
 
-#ifdef _MSC_VER
-extern char** _environ;
-#else
+#if !defined(_MSC_VER)
 extern "C" char** environ;
 #endif
 

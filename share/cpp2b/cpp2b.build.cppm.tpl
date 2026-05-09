@@ -9,6 +9,7 @@ module;
 export module cpp2b.build;
 
 import std;
+export import cpp2b;
 
 struct cpp2b_detail_build_impl;
 struct cpp2b_detail_git_repo_impl;
@@ -93,6 +94,14 @@ CPP2B_BUILD_DECL_FN(
 );
 
 export namespace cpp2b {
+
+enum class compiler_choice {
+  preferred,
+  msvc,
+  gcc,
+  clang
+};
+
 class git_repo {
   std::shared_ptr<cpp2b_detail_git_repo_impl> impl;
 
@@ -147,7 +156,7 @@ public:
     std::source_location  caller_srcloc = std::source_location::current()
   ) -> cpp1_module {
     CPP2B_BUILD_FN_CHECK(cpp2b_detail_cpp1_module_include_directory);
-    (*cpp2b_detail_cpp1_module_include_directory)(impl.get(), p, caller_srcloc);
+    (*cpp2b_detail_cpp1_module_include_directory)(impl.get(), p, caller_srcloc);        
     return *this;
   }
 
@@ -228,3 +237,4 @@ CPP2B_BUILD_API void cpp2b_detail_build(cpp2b_detail_build_impl* impl) {
   cpp2b::build b(impl);
   ::build(b);
 }
+

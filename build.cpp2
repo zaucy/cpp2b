@@ -1,6 +1,7 @@
 import cpp2b.build;
 
 cppfront :== "v0.8.1";
+compiler :== cpp2b::compiler_choice::preferred;
 
 build: (inout b: cpp2b::build) -> void = {
 	_ = b.cpp1_module().source_path("src/dylib.cppm");
