@@ -9,6 +9,7 @@ module;
 export module cpp2b.build;
 
 import std;
+export import cpp2b;
 
 struct cpp2b_detail_build_impl;
 struct cpp2b_detail_git_repo_impl;

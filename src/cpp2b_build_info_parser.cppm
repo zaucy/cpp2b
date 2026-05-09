@@ -63,6 +63,158 @@ source_info parse_source(const std::string& filename) {
     result.kind = source_kind::build;
     // Extract constants
     for(size_t j = 0; j < all_tokens.size(); ++j) {
+      auto name = all_tokens[j].as_string_view();
+
+      // Specific handling for 'compiler :== ...'
+      if (name == "compiler" && j + 2 < all_tokens.size() &&
+          all_tokens[j+1].type() == cpp2::lexeme::Colon &&
+          all_tokens[j+2].type() == cpp2::lexeme::EqualComparison) {
+
+        size_t k = j + 3;
+      auto match_path = [&](const std::vector<std::string_view>& parts) {
+        size_t cur = k;
+        for (size_t i = 0; i < parts.size(); ++i) {
+          if (cur >= all_tokens.size()) return false;
+          if (all_tokens[cur].as_string_view() != parts[i]) return false;
+          cur++;
+          if (i < parts.size() - 1) {
+            if (cur >= all_tokens.size()) return false;
+            if (all_tokens[cur].as_string_view() == "::") {
+              cur++;
+            } else if (cur + 1 < all_tokens.size() && 
+                       all_tokens[cur].as_string_view() == ":" && 
+                       all_tokens[cur+1].as_string_view() == ":") {
+              cur += 2;
+            } else {
+              return false;
+            }
+          }
+        }
+        k = cur;
+        return true;
+      };
+
+        // Case 1: compiler :== cpp2b::compiler_type::<value>;
+        if (match_path({"cpp2b", "compiler_type"})) {
+          bool has_scope = false;
+          if (k < all_tokens.size() && all_tokens[k].as_string_view() == "::") {
+            k++;
+            has_scope = true;
+          } else if (k + 1 < all_tokens.size() && 
+                     all_tokens[k].as_string_view() == ":" && 
+                     all_tokens[k+1].as_string_view() == ":") {
+            k += 2;
+            has_scope = true;
+          }
+
+          if (has_scope && k < all_tokens.size() &&
+              all_tokens[k].type() == cpp2::lexeme::Identifier) {
+            result.constants["compiler"] = std::string(all_tokens[k].as_string_view());
+            j = k;
+            continue;
+          }
+        }
+        // Case 2: compiler :== inspect cpp2b::host_platform() { ... }
+        else if (all_tokens[k].as_string_view() == "inspect") {
+          k++;
+          if (match_path({"cpp2b", "host_platform"})) {
+            if (k + 1 < all_tokens.size() &&
+                all_tokens[k].as_string_view() == "(" &&
+                all_tokens[k+1].as_string_view() == ")") {
+
+              k += 2;
+              // Skip optional '-> result_type'
+              if (k < all_tokens.size() && 
+                  (all_tokens[k].as_string_view() == "->" || all_tokens[k].type() == cpp2::lexeme::Arrow)) {
+                k++;
+                while (k < all_tokens.size() && all_tokens[k].as_string_view() != "{") k++;
+              }
+
+              if (k < all_tokens.size() && all_tokens[k].as_string_view() == "{") {
+                k += 1;
+                std::string_view host_platform = 
+ 
+    #if defined(_WIN32)
+                "windows";
+    #elif defined(__APPLE__)
+                "macos";
+    #else
+                "linux";
+    #endif
+
+                bool found = false;
+                while (k < all_tokens.size() && all_tokens[k].as_string_view() != "}") {
+                  // is cpp2b::platform::<platform> = cpp2b::compiler_type::<value>;
+                  // or is _ = ...
+                  if (all_tokens[k].as_string_view() == "is") {
+                    k++;
+                    bool is_default = (all_tokens[k].as_string_view() == "_");
+                    std::string_view branch_platform = "";
+
+                    if (!is_default) {
+                      size_t saved_k_branch = k;
+                      if (match_path({"cpp2b", "platform"})) {
+                        bool has_scope = false;
+                        if (k < all_tokens.size() && all_tokens[k].as_string_view() == "::") {
+                          k++;
+                          has_scope = true;
+                        } else if (k + 1 < all_tokens.size() && 
+                                   all_tokens[k].as_string_view() == ":" && 
+                                   all_tokens[k+1].as_string_view() == ":") {
+                          k += 2;
+                          has_scope = true;
+                        }
+
+                        if (has_scope && k < all_tokens.size() &&
+                            (all_tokens[k].type() == cpp2::lexeme::Identifier || all_tokens[k].type() == cpp2::lexeme::Keyword)) {
+                          branch_platform = all_tokens[k].as_string_view();
+                          k++;
+                        }
+                      }
+                      } else {
+                      k++;
+                      }
+
+                      if (k < all_tokens.size() && all_tokens[k].as_string_view() == "=") {
+                      k++;
+                      if (match_path({"cpp2b", "compiler_type"})) {
+                        bool has_scope = false;
+                        if (k < all_tokens.size() && all_tokens[k].as_string_view() == "::") {
+                          k++;
+                          has_scope = true;
+                        } else if (k + 1 < all_tokens.size() && 
+                                   all_tokens[k].as_string_view() == ":" && 
+                                   all_tokens[k+1].as_string_view() == ":") {
+                          k += 2;
+                          has_scope = true;
+                        }
+
+                        if (has_scope && k < all_tokens.size() &&
+                            (all_tokens[k].type() == cpp2::lexeme::Identifier || all_tokens[k].type() == cpp2::lexeme::Keyword)) {
+
+                          if (!found && (is_default || branch_platform == host_platform)) {
+                            result.constants["compiler"] = std::string(all_tokens[k].as_string_view());
+                            found = true;
+                          }
+                          k++;
+                        }
+                      }
+                      }
+
+                  } else {
+                    k++;
+                  }
+                }
+                if (found) {
+                  j = k;
+                  continue;
+                }
+              }
+            }
+          }
+        }
+      }
+
       // identifier == string_literal ;
       if(j + 3 < all_tokens.size() &&
          all_tokens[j].type() == cpp2::lexeme::Identifier &&

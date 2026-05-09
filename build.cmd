@@ -118,7 +118,7 @@ cl /nologo ^
     /std:c++latest /W4 /MDd /EHsc ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
-    /c /interface /TP "%root_dir%src\dylib.cppm" > NUL
+    /c /interface /TP "%root_dir%src\dylib.cppm"
 popd
 
 if %ERRORLEVEL% neq 0 (
@@ -132,7 +132,7 @@ cl /nologo ^
     /std:c++latest /W4 /MDd /EHsc ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
-    /c /interface /TP "%root_dir%src\nlohmann.json.cppm" > NUL
+    /c /interface /TP "%root_dir%src\nlohmann.json.cppm"
 popd
 
 if %ERRORLEVEL% neq 0 (
@@ -147,7 +147,7 @@ cl /nologo ^
     -I"%cppfront_include_dir%" ^
     /reference "%modules_dir%\std.ifc" ^
     /reference "%modules_dir%\std.compat.ifc" ^
-    /c /interface /TP "%root_dir%src\cpp2b_build_info_parser.cppm" > NUL
+    /c /interface /TP "%root_dir%src\cpp2b_build_info_parser.cppm"
 popd
 
 if %ERRORLEVEL% neq 0 (
