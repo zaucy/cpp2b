@@ -66,50 +66,56 @@ source_info parse_source(const std::string& filename) {
       auto name = all_tokens[j].as_string_view();
 
       // Specific handling for 'compiler :== ...'
-      if (name == "compiler" && j + 2 < all_tokens.size() &&
-          all_tokens[j+1].type() == cpp2::lexeme::Colon &&
-          all_tokens[j+2].type() == cpp2::lexeme::EqualComparison) {
-
+      if(name == "compiler" && j + 2 < all_tokens.size() &&
+         all_tokens[j + 1].type() == cpp2::lexeme::Colon &&
+         all_tokens[j + 2].type() == cpp2::lexeme::EqualComparison) {
         size_t k = j + 3;
-      auto match_path = [&](const std::vector<std::string_view>& parts) {
-        size_t cur = k;
-        for (size_t i = 0; i < parts.size(); ++i) {
-          if (cur >= all_tokens.size()) return false;
-          if (all_tokens[cur].as_string_view() != parts[i]) return false;
-          cur++;
-          if (i < parts.size() - 1) {
-            if (cur >= all_tokens.size()) return false;
-            if (all_tokens[cur].as_string_view() == "::") {
-              cur++;
-            } else if (cur + 1 < all_tokens.size() && 
-                       all_tokens[cur].as_string_view() == ":" && 
-                       all_tokens[cur+1].as_string_view() == ":") {
-              cur += 2;
-            } else {
+        auto   match_path = [&](const std::vector<std::string_view>& parts) {
+          size_t cur = k;
+          for(size_t i = 0; i < parts.size(); ++i) {
+            if(cur >= all_tokens.size()) {
               return false;
             }
+            if(all_tokens[cur].as_string_view() != parts[i]) {
+              return false;
+            }
+            cur++;
+            if(i < parts.size() - 1) {
+              if(cur >= all_tokens.size()) {
+                return false;
+              }
+              if(all_tokens[cur].as_string_view() == "::") {
+                cur++;
+              } else if(cur + 1 < all_tokens.size() &&
+                        all_tokens[cur].as_string_view() == ":" &&
+                        all_tokens[cur + 1].as_string_view() == ":") {
+                cur += 2;
+              } else {
+                return false;
+              }
+            }
           }
-        }
-        k = cur;
-        return true;
-      };
+          k = cur;
+          return true;
+        };
 
         // Case 1: compiler :== cpp2b::compiler_choice::<value>;
-        if (match_path({"cpp2b", "compiler_choice"})) {
+        if(match_path({"cpp2b", "compiler_choice"})) {
           bool has_scope = false;
-          if (k < all_tokens.size() && all_tokens[k].as_string_view() == "::") {
+          if(k < all_tokens.size() && all_tokens[k].as_string_view() == "::") {
             k++;
             has_scope = true;
-          } else if (k + 1 < all_tokens.size() && 
-                     all_tokens[k].as_string_view() == ":" && 
-                     all_tokens[k+1].as_string_view() == ":") {
+          } else if(k + 1 < all_tokens.size() &&
+                    all_tokens[k].as_string_view() == ":" &&
+                    all_tokens[k + 1].as_string_view() == ":") {
             k += 2;
             has_scope = true;
           }
 
-          if (has_scope && k < all_tokens.size() &&
-              all_tokens[k].type() == cpp2::lexeme::Identifier) {
-            result.constants["compiler"] = std::string(all_tokens[k].as_string_view());
+          if(has_scope && k < all_tokens.size() &&
+             all_tokens[k].type() == cpp2::lexeme::Identifier) {
+            result.constants["compiler"] =
+              std::string(all_tokens[k].as_string_view());
             j = k;
             continue;
           }
@@ -131,26 +137,26 @@ source_info parse_source(const std::string& filename) {
         j += 3;
       }
       // identifier :== string_literal ;
-      else if (j + 3 < all_tokens.size() &&
-          all_tokens[j].type() == cpp2::lexeme::Identifier &&
-          all_tokens[j+1].type() == cpp2::lexeme::Colon &&
-          all_tokens[j+2].type() == cpp2::lexeme::EqualComparison &&
-          all_tokens[j+3].type() == cpp2::lexeme::StringLiteral) {
-          auto name = all_tokens[j].as_string_view();
-          auto value_raw = all_tokens[j+3].as_string_view();
-          if (value_raw.size() >= 2) {
-              auto value = std::string(value_raw.substr(1, value_raw.size() - 2));
-              result.constants[std::string(name)] = value;
-          }
-          j += 3;
+      else if(j + 3 < all_tokens.size() &&
+              all_tokens[j].type() == cpp2::lexeme::Identifier &&
+              all_tokens[j + 1].type() == cpp2::lexeme::Colon &&
+              all_tokens[j + 2].type() == cpp2::lexeme::EqualComparison &&
+              all_tokens[j + 3].type() == cpp2::lexeme::StringLiteral) {
+        auto name = all_tokens[j].as_string_view();
+        auto value_raw = all_tokens[j + 3].as_string_view();
+        if(value_raw.size() >= 2) {
+          auto value = std::string(value_raw.substr(1, value_raw.size() - 2));
+          result.constants[std::string(name)] = value;
+        }
+        j += 3;
       }
       // identifier : type == string_literal ;
-      else if (j + 5 < all_tokens.size() &&
-          all_tokens[j].type() == cpp2::lexeme::Identifier &&
-          all_tokens[j+1].type() == cpp2::lexeme::Colon &&
-          all_tokens[j+3].type() == cpp2::lexeme::EqualComparison &&
-          all_tokens[j+4].type() == cpp2::lexeme::StringLiteral &&
-          all_tokens[j+5].type() == cpp2::lexeme::Semicolon) {
+      else if(j + 5 < all_tokens.size() &&
+              all_tokens[j].type() == cpp2::lexeme::Identifier &&
+              all_tokens[j + 1].type() == cpp2::lexeme::Colon &&
+              all_tokens[j + 3].type() == cpp2::lexeme::EqualComparison &&
+              all_tokens[j + 4].type() == cpp2::lexeme::StringLiteral &&
+              all_tokens[j + 5].type() == cpp2::lexeme::Semicolon) {
         auto name = all_tokens[j].as_string_view();
         auto value_raw = all_tokens[j + 4].as_string_view();
         if(value_raw.size() >= 2) {
