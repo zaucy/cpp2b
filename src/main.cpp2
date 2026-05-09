@@ -96,6 +96,54 @@ expect: <T>(move opt: std::optional<T>, message) -> T = {
 	return opt*;
 }
 
+executable_extension: () -> std::string_view = {
+	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+		return ".exe";
+	} else {
+		return "";
+	}
+}
+
+cmd_exists: (cmd: std::string) -> bool = {
+	check_cmd: std::string = "";
+	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+		check_cmd = std::format("where /q {}", cmd);
+	} else {
+		check_cmd = std::format("command -v {} > /dev/null 2>&1", cmd);
+	}
+	return std::system(check_cmd.c_str()) == 0;
+}
+
+discover_clang_cmd: () -> std::string = {
+	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+		if cmd_exists("clang") { return "clang"; }
+		if cmd_exists("clang-cl") { return "clang-cl"; }
+		return "clang"; // fallback
+	} else {
+		if cmd_exists("clang-19") { return "clang-19"; }
+		return "clang";
+	}
+}
+
+discover_mingw_gxx: () -> std::string = {
+	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+		if cmd_exists("g++") { return "g++"; }
+		
+		// Common installation paths
+		common_paths: std::vector<fs::path> = (
+			"C:/msys64/mingw64/bin/g++.exe",
+			"C:/msys64/ucrt64/bin/g++.exe",
+			"C:/msys64/clang64/bin/g++.exe",
+			"C:/MinGW/bin/g++.exe"
+		);
+
+		for common_paths do (p: fs::path) {
+			if fs::exists(p) { return p.string(); }
+		}
+	}
+	return "g++";
+}
+
 GitRepo: type = {
 	private repo_name: fs::path = ();
 	private clone_url: std::string = ();
@@ -160,16 +208,22 @@ Usage:
 
 module_source_extension: (compiler: cpp2b::compiler_type) -> std::string_view = {
 	if compiler == cpp2b::compiler_type::msvc  { return ".ixx"; }
-	if compiler == cpp2b::compiler_type::clang { return ".cppm"; }
+	if compiler == cpp2b::compiler_type::clang {
+		if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+			return ".ixx";
+		} else {
+			return ".cppm";
+		}
+	}
 	if compiler == cpp2b::compiler_type::gcc   { return ".cxx"; }
-	std::exit(1);
+	return ".cppm";
 }
 
 bmi_extension: (compiler: cpp2b::compiler_type) -> std::string_view = {
 	if compiler == cpp2b::compiler_type::msvc  { return ".ifc"; }
 	if compiler == cpp2b::compiler_type::clang { return ".pcm"; }
 	if compiler == cpp2b::compiler_type::gcc   { return ".pcm"; } // TODO: Is this right?
-	std::exit(1);
+	return ".pcm";
 }
 
 generate_cpp2b_module: (compiler: cpp2b::compiler_type) = {
@@ -261,12 +315,32 @@ get_vs_tools_dir: () -> fs::path = {
 }
 
 get_llvm_root: () -> fs::path = {
+	if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+		if cmd_exists("clang") {
+			// Typically C:\Program Files\LLVM\bin\clang.exe -> C:\Program Files\LLVM
+			// Let's check common paths first.
+			common_paths: std::vector<fs::path> = (
+				"C:/Program Files/LLVM",
+				"C:/Program Files (x86)/LLVM"
+			);
+			for common_paths do (p: fs::path) {
+				if fs::exists(p) { return p; }
+			}
+		}
+		return "C:/Program Files/LLVM";
+	}
 	return "/usr/lib/llvm-19";
 }
 
 get_system_modules_dir: (compiler: cpp2b::compiler_type) -> fs::path = {
 	if compiler == cpp2b::compiler_type::msvc  { return get_vs_tools_dir() / "modules"; }
-	if compiler == cpp2b::compiler_type::clang { return get_llvm_root() / "share" / "libc++" / "v1"; }
+	if compiler == cpp2b::compiler_type::clang {
+		if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+			return get_vs_tools_dir() / "modules";
+		} else {
+			return get_llvm_root() / "share" / "libc++" / "v1";
+		}
+	}
 	log_error("cannot find system cpp20 modules directory");
 	std::exit(1);
 }
@@ -293,9 +367,9 @@ ensure_std_modules: (compiler: cpp2b::compiler_type) = {
 }
 
 
-cl_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, name: std::string, module_deps, bmi_path: fs::path) -> std::string = {
+cl_build_cpp1_module_cmd: (compiler_cmd: std::string, impl: cpp2b_detail_cpp1_module_impl, name: std::string, module_deps, bmi_path: fs::path) -> std::string = {
 	d := fs::absolute(modules_dir());
-	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP";
+	cmd_str: std::string = std::format("{} /nologo /std:c++latest /W4 /MDd /EHsc /c /interface /TP", compiler_cmd);
 
 	for impl.system_include_directories do (dir: fs::path) {
 		cmd_str += " /I\"(fs::absolute(dir).string())$\"";
@@ -317,9 +391,13 @@ cl_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, name: std::strin
 
 unix_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, compiler_cmd: std::string, name: std::string, module_deps, bmi_path: fs::path) -> std::string = {
 	d := fs::absolute(modules_dir());
-	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
-	cmd_str: std::string = std::format("{} -stdlib=libc++ -std=c++23 -fexperimental-library", compiler_cmd);
-	cmd_str += std::format(" -isystem \"{}\"", fs::absolute(sys_inc_dir).string());
+	cmd_str: std::string = std::format("{} -std=c++23", compiler_cmd);
+	
+	if constexpr cpp2b::host_platform() != cpp2b::platform::windows {
+		cmd_str += " -stdlib=libc++ -fexperimental-library";
+		sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
+		cmd_str += std::format(" -isystem \"{}\"", fs::absolute(sys_inc_dir).string());
+	}
 
 	for impl.system_include_directories do (dir: fs::path) {
 		cmd_str += std::format(" -isystem \"{}\"", fs::absolute(dir).string());
@@ -330,8 +408,10 @@ unix_build_cpp1_module_cmd: (impl: cpp2b_detail_cpp1_module_impl, compiler_cmd: 
 	}
 
 	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", fs::absolute(d).string());
-	cmd_str += " \"(fs::absolute(impl.source_path).string())$\"";
-	cmd_str += std::format(" --precompile -o {}/{}.pcm", d.string(), name);
+
+	// Clang uses .pcm for modules
+	cmd_str += std::format(" -x c++-module \"{}\"", fs::absolute(impl.source_path).string());
+	cmd_str += std::format(" --precompile -o \"{}\"", fs::absolute(bmi_path).string());
 	return cmd_str;
 }
 
@@ -344,10 +424,16 @@ build_cpp1_module: (impl: cpp2b_detail_cpp1_module_impl, name: std::string, modu
 	ensure_dir(log_path.parent_path());
 
 	cmd_str: std::string = "";
-	     if compiler == cpp2b::compiler_type::msvc { cmd_str = cl_build_cpp1_module_cmd(impl, name, module_deps, bmi); }
-	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_cpp1_module_cmd(impl, "clang-19", name, module_deps, bmi); }
-	else if compiler == cpp2b::compiler_type::gcc { cmd_str = unix_build_cpp1_module_cmd(impl, "gcc", name, module_deps, bmi); }
-	else { log_error("unsupported compiler"); std::exit(1); }
+	if compiler == cpp2b::compiler_type::msvc {
+		cmd_str = cl_build_cpp1_module_cmd("cl", impl, name, module_deps, bmi);
+	} else if compiler == cpp2b::compiler_type::clang {
+		cmd_str = unix_build_cpp1_module_cmd(impl, discover_clang_cmd(), name, module_deps, bmi);
+	} else if compiler == cpp2b::compiler_type::gcc {
+		cmd_str = unix_build_cpp1_module_cmd(impl, discover_mingw_gxx(), name, module_deps, bmi);
+	} else {
+		log_error("unsupported compiler");
+		std::exit(1);
+	}
 
 	cmd_str += cmd_log_output(fs::absolute(log_path));
 
@@ -550,14 +636,6 @@ main: (args) -> int = {
 	return 1;
 }
 
-executable_extension: () -> std::string_view =  {
-	if constexpr cpp2b::target_platform() == cpp2b::platform::windows {
-		return ".exe";
-	} else {
-		return "";
-	}
-}
-
 shared_library_extension: () -> std::string_view =  {
 	if constexpr cpp2b::target_platform() == cpp2b::platform::windows {
 		return ".dll";
@@ -595,8 +673,9 @@ transpile_cpp2: (src: fs::path, out_dir: fs::path) -> transpile_cpp2_result = {
 	result.output_log = fs::path(".cache") / "cpp2" / "log" / "transpile" / fs::path(src).replace_extension(".log");
 	ensure_dir(result.output_log.parent_path());
 
-	cppfront := fs::absolute(".cache/cpp2/tools/cppfront(executable_extension())$");
-	cmd_str: std::string = "(cppfront.string())$ (src.string())$ -o (result.cpp1_output.string())$ -pure -import-std -l -format-colon-errors (cmd_log_output(result.output_log))$";
+	cppfront_bin_name: std::string = "cppfront(executable_extension())$";
+	cppfront_exe := fs::absolute(".cache/cpp2/tools") / cppfront_bin_name;
+	cmd_str: std::string = std::format("{} {} -o {} -pure -import-std -l -format-colon-errors {}", cppfront_exe.string(), src.string(), result.cpp1_output.string(), cmd_log_output(result.output_log));
 	ensure_dir(result.cpp1_output.parent_path());
 
 	result.cppfront_exit_code = measure(
@@ -616,9 +695,10 @@ unix_compile_cppfront: (cc: std::string_view, cppfront_source: fs::path, out_cpp
 	return exit_code;
 }
 
-cl_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path, log_path: fs::path) -> int = {
+cl_compile_cppfront: (compiler_cmd: std::string, cppfront_source: fs::path, out_cppfront_binary: fs::path, log_path: fs::path) -> int = {
 	cwd := fs::current_path();
-	cmd_str: std::string = "cl.exe /nologo /std:c++latest /EHsc cppfront.cpp (cmd_log_output(fs::absolute(log_path)))$";
+	abs_log_path := fs::absolute(log_path);
+	cmd_str: std::string = std::format("{} /nologo /std:c++latest /EHsc cppfront.cpp {}", compiler_cmd, cmd_log_output(abs_log_path));
 	fs::current_path(cppfront_source / "source");
 	exit_code := std::system(cmd_str.c_str());
 	if exit_code == 0 {
@@ -629,22 +709,31 @@ cl_compile_cppfront: (cppfront_source: fs::path, out_cppfront_binary: fs::path, 
 }
 
 ensure_cppfront: (cppfront_source: fs::path, compiler: cpp2b::compiler_type) -> int = {
-	cppfront: fs::path = ".cache/cpp2/tools/cppfront(executable_extension())$";
-	if !fs::exists(cppfront) {
+	cppfront_exe: fs::path = ".cache/cpp2/tools/cppfront(executable_extension())$";
+	if !fs::exists(cppfront_exe) {
 		log_info("compiling cppfront...");
 
 		cppfront_compile_log_path: fs::path = ".cache/cpp2/log/cppfront.log";
 
 		if compiler == cpp2b::compiler_type::clang {
-			return unix_compile_cppfront("clang-19", fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
+			clang_cmd := discover_clang_cmd();
+			if constexpr cpp2b::host_platform() == cpp2b::platform::windows {
+				if clang_cmd == "clang-cl" {
+					return cl_compile_cppfront(clang_cmd, fs::absolute(cppfront_source), fs::absolute(cppfront_exe), cppfront_compile_log_path);
+				} else {
+					return unix_compile_cppfront(clang_cmd, fs::absolute(cppfront_source), fs::absolute(cppfront_exe), cppfront_compile_log_path);
+				}
+			} else {
+				return unix_compile_cppfront(clang_cmd, fs::absolute(cppfront_source), fs::absolute(cppfront_exe), cppfront_compile_log_path);
+			}
 		}
 
 		if compiler == cpp2b::compiler_type::gcc {
-			return unix_compile_cppfront("gcc", fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
+			return unix_compile_cppfront(discover_mingw_gxx(), fs::absolute(cppfront_source), fs::absolute(cppfront_exe), cppfront_compile_log_path);
 		}
 
 		if compiler == cpp2b::compiler_type::msvc {
-			return cl_compile_cppfront(fs::absolute(cppfront_source), fs::absolute(cppfront), cppfront_compile_log_path);
+			return cl_compile_cppfront("cl", fs::absolute(cppfront_source), fs::absolute(cppfront_exe), cppfront_compile_log_path);
 		}
 
 		log_error("unknown compiler");
@@ -702,14 +791,14 @@ build_binary_result: @struct type = {
 	duration: std::chrono::milliseconds = ();
 }
 
-cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
+cl_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
 
 	bin_parent_dir := fs::relative(bin_outpath).parent_path().string();
 	std::replace(bin_parent_dir.begin(), bin_parent_dir.end(), '/', '\\');
 
-	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC";
+	cmd_str: std::string = std::format("{} /nologo /std:c++latest /W4 /MDd /EHsc /DEBUG:full /Zi /FC", compiler_cmd);
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
 		imp_obj := d / ("(imp)$.obj");
@@ -724,20 +813,23 @@ cl_build_binary_cmd: (info: cpp2b_source_binary_info, bin_outpath: fs::path, cpp
 }
 
 unix_build_binary_cmd: (compiler_cmd: std::string, info: cpp2b_source_binary_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
-	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
-	sys_lib_dir := get_llvm_root() / "lib";
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
-	cmd_str: std::string = std::format("{} -stdlib=libc++ -fPIC", compiler_cmd);
+	cmd_str: std::string = std::format("{} -std=c++23", compiler_cmd);
+	
+	if constexpr cpp2b::host_platform() != cpp2b::platform::windows {
+		cmd_str += " -stdlib=libc++ -fPIC -fexperimental-library";
+		sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
+		sys_lib_dir := get_llvm_root() / "lib";
+		cmd_str += std::format(" -L{} -isystem {}", sys_lib_dir.string(), sys_inc_dir.string());
+		cmd_str += " -lc++abi -lc++ -lm -static -fuse-ld=lld";
+	}
+
 	for info.imports do (imp: std::string) {
-		cmd_str += " \"" + (d / ("(imp)$.pcm")).string() + "\"";
+		cmd_str += std::format(" -fmodule-file={}=\"{}\"", imp, (d / ("(imp)$.pcm")).string());
 	}
 	cmd_str += " \"(transpiled_src.string())$\"";
-	cmd_str += " -std=c++23 -fexperimental-library";
-	cmd_str += std::format(" -fprebuilt-module-path={}", d.string());
-	cmd_str += std::format(" -L{}", sys_lib_dir.string());
-	cmd_str += std::format(" -isystem {}", sys_inc_dir.string());
-	cmd_str += " -lc++abi -lc++ -lm -static -fuse-ld=lld";
+	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", d.string());
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " -o \"(bin_outpath.string())$\"";
 	return cmd_str;
@@ -758,10 +850,16 @@ build_binary: (info: cpp2b_source_binary_info, cppfront_include_dir: fs::path, c
 	d := fs::absolute(modules_dir());
 
 	cmd_str: std::string = "";
-	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_binary_cmd(info, bin_outpath, cppfront_include_dir); }
-	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_binary_cmd("clang-19", info, bin_outpath, cppfront_include_dir); }
-	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_binary_cmd("gcc", info, bin_outpath, cppfront_include_dir); }
-	else { log_error("Unsupported compiler"); std::exit(1); }
+	if compiler == cpp2b::compiler_type::msvc {
+		cmd_str = cl_build_binary_cmd("cl", info, bin_outpath, cppfront_include_dir);
+	} else if compiler == cpp2b::compiler_type::clang {
+		cmd_str = unix_build_binary_cmd(discover_clang_cmd(), info, bin_outpath, cppfront_include_dir);
+	} else if compiler == cpp2b::compiler_type::gcc {
+		cmd_str = unix_build_binary_cmd(discover_mingw_gxx(), info, bin_outpath, cppfront_include_dir);
+	} else {
+		log_error("Unsupported compiler");
+		std::exit(1);
+	}
 
 	cmd_str += " (cmd_log_output(fs::absolute(log_path)))$";
 
@@ -920,10 +1018,10 @@ cpp2b_detail_build: (copy _impl: *cpp2b_detail_build_impl) -> void = {
 	// empty. this is just so we can decltype the signature
 }
 
-cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
+cl_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_build_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
-	cmd_str: std::string = "cl /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL";
+	cmd_str: std::string = std::format("{} /nologo /std:c++latest /W4 /MDd /EHsc /LDd /DLL", compiler_cmd);
 	for info.imports do (imp: std::string) {
 		imp_bmi := d / ("(imp)$.ifc");
 		imp_obj := d / ("(imp)$.obj");
@@ -940,20 +1038,23 @@ cl_build_build_script_cmd: (info: cpp2b_source_build_info, bin_outpath: fs::path
 
 
 unix_build_build_script_cmd: (compiler_cmd: std::string, info: cpp2b_source_build_info, bin_outpath: fs::path, cppfront_include_dir: fs::path) -> std::string = {
-	sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
-	sys_lib_dir := get_llvm_root() / "lib";
 	transpiled_src := fs::absolute(".cache/cpp2/source") / fs::path(info.src).replace_extension(".cpp");
 	d := fs::absolute(modules_dir());
-	cmd_str: std::string = std::format("{} -stdlib=libc++ -shared", compiler_cmd);
+	cmd_str: std::string = std::format("{} -std=c++23 -shared", compiler_cmd);
+
+	if constexpr cpp2b::host_platform() != cpp2b::platform::windows {
+		cmd_str += " -stdlib=libc++ -fexperimental-library -fPIC";
+		sys_inc_dir := get_llvm_root() / "include" / "c++" / "v1";
+		sys_lib_dir := get_llvm_root() / "lib";
+		cmd_str += std::format(" -L{} -isystem {}", sys_lib_dir.string(), sys_inc_dir.string());
+		cmd_str += " -lc++abi -lc++ -lm -fuse-ld=lld";
+	}
+
 	for info.imports do (imp: std::string) {
-		cmd_str += " \"" + (d / ("(imp)$.pcm")).string() + "\"";
+		cmd_str += std::format(" -fmodule-file={}=\"{}\"", imp, (d / ("(imp)$.pcm")).string());
 	}
 	cmd_str += " \"(transpiled_src.string())$\"";
-	cmd_str += " -std=c++23 -fexperimental-library -fPIC";
-	cmd_str += std::format(" -fprebuilt-module-path={}", d.string());
-	cmd_str += std::format(" -L{}", sys_lib_dir.string());
-	cmd_str += std::format(" -isystem {}", sys_inc_dir.string());
-	cmd_str += " -lc++abi -lc++ -lm -fuse-ld=lld";
+	cmd_str += std::format(" -fprebuilt-module-path=\"{}\"", d.string());
 	cmd_str += " -I\"(cppfront_include_dir.string())$\"";
 	cmd_str += " -o \"(bin_outpath.string())$\"";
 	return cmd_str;
@@ -968,10 +1069,16 @@ build_build_script: (info: cpp2b_source_build_info, cppfront_include_dir: fs::pa
 
 	d := fs::absolute(modules_dir());
 	cmd_str: std::string = "";
-	     if compiler == cpp2b::compiler_type::msvc  { cmd_str = cl_build_build_script_cmd(info, bin_outpath, cppfront_include_dir); }
-	else if compiler == cpp2b::compiler_type::clang { cmd_str = unix_build_build_script_cmd("clang-19", info, bin_outpath, cppfront_include_dir); }
-	else if compiler == cpp2b::compiler_type::gcc   { cmd_str = unix_build_build_script_cmd("gcc", info, bin_outpath, cppfront_include_dir); }
-	else { log_error("Unsupported compiler"); std::exit(1); }
+	if compiler == cpp2b::compiler_type::msvc {
+		cmd_str = cl_build_build_script_cmd("cl", info, bin_outpath, cppfront_include_dir);
+	} else if compiler == cpp2b::compiler_type::clang {
+		cmd_str = unix_build_build_script_cmd(discover_clang_cmd(), info, bin_outpath, cppfront_include_dir);
+	} else if compiler == cpp2b::compiler_type::gcc {
+		cmd_str = unix_build_build_script_cmd(discover_mingw_gxx(), info, bin_outpath, cppfront_include_dir);
+	} else {
+		log_error("Unsupported compiler");
+		std::exit(1);
+	}
 
 	cmd_str += " (cmd_log_output(fs::relative(log_path)))$";
 
